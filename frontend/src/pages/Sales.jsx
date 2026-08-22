@@ -10,6 +10,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import ProductCombobox from "@/components/ProductCombobox";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -254,16 +255,12 @@ export default function Sales() {
                   {items.map((it, idx) => (
                     <tr key={idx} className="border-t border-slate-100" data-testid="sale-item-row">
                       <td className="px-2 py-2">
-                        <Select value={it.product_id} onValueChange={(v) => onSelectProduct(idx, v)}>
-                          <SelectTrigger data-testid={`sale-product-select-${idx}`} className="h-9">
-                            <SelectValue placeholder="Pilih produk" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white max-h-64">
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>{p.nama_produk}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <ProductCombobox
+                          products={products}
+                          value={it.product_id}
+                          onSelect={(pid) => onSelectProduct(idx, pid)}
+                          testid={`sale-product-select-${idx}`}
+                        />
                       </td>
                       <td className="px-2 py-2">
                         <Input type="number" step="any" value={it.qty} onChange={(e) => setItem(idx, { qty: e.target.value })}

@@ -313,6 +313,31 @@ async def sale_receipt(sale_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------- Dashboard ----------------
+@api_router.get("/dashboard/monthly-sales")
+async def monthly_sales(user: dict = Depends(get_current_user)):
+    sales = await db.sales.find().to_list(10000)
+    now = datetime.now(timezone.utc)
+    buckets = []
+    labels_id = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+    for i in range(11, -1, -1):
+        y = now.year
+        m = now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        buckets.append({"key": f"{y}-{m:02d}", "label": f"{labels_id[m-1]} {str(y)[2:]}", "total": 0.0})
+    idx = {b["key"]: b for b in buckets}
+    for s in sales:
+        tgl = str(s.get("tanggal", ""))
+        key = tgl[:7]
+        if key in idx:
+            idx[key]["total"] += s.get("grand_total", 0)
+    for b in buckets:
+        b["total"] = round(b["total"], 2)
+        b.pop("key", None)
+    return buckets
+
+
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
     products = await db.products.find().to_list(5000)

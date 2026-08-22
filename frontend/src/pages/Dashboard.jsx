@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { rupiah } from "@/lib/format";
 import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 function StatCard({ icon: Icon, label, value, sub, testid, accent }) {
   return (
@@ -20,9 +21,11 @@ function StatCard({ icon: Icon, label, value, sub, testid, accent }) {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
+  const [monthly, setMonthly] = useState([]);
 
   useEffect(() => {
     api.get("/dashboard/stats").then((res) => setStats(res.data)).catch(() => {});
+    api.get("/dashboard/monthly-sales").then((res) => setMonthly(res.data)).catch(() => {});
   }, []);
 
   return (
@@ -45,6 +48,37 @@ export default function Dashboard() {
           value={stats ? stats.total_transactions : "—"} sub="Total transaksi tercatat" />
         <StatCard testid="stat-today-sales" icon={CalendarDays} label="Penjualan Hari Ini" accent="bg-teal-100 text-teal-700"
           value={stats ? rupiah(stats.today_sales) : "—"} sub="Transaksi hari ini" />
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg p-5 mt-6" data-testid="monthly-sales-chart">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Rekap Penjualan Bulanan</h2>
+            <p className="text-xs text-slate-500">Total penjualan 12 bulan terakhir</p>
+          </div>
+          <TrendingUp className="h-5 w-5 text-primary" />
+        </div>
+        <div style={{ width: "100%", height: 300 }}>
+          <ResponsiveContainer>
+            <BarChart data={monthly} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#64748B" }} axisLine={false} tickLine={false} />
+              <YAxis
+                tick={{ fontSize: 11, fill: "#94A3B8" }}
+                axisLine={false}
+                tickLine={false}
+                width={70}
+                tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}jt` : v >= 1000 ? `${Math.round(v / 1000)}rb` : v)}
+              />
+              <Tooltip
+                formatter={(v) => [rupiah(v), "Penjualan"]}
+                contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }}
+                cursor={{ fill: "rgba(22,101,52,0.06)" }}
+              />
+              <Bar dataKey="total" fill="#166534" radius={[4, 4, 0, 0]} maxBarSize={44} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
