@@ -5,7 +5,7 @@ import os
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -187,6 +187,114 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     return {"message": "Produk dihapus"}
+
+
+def _to_num(v):
+    if v is None or v == "":
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace("Rp", "").replace(" ", "")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "." in s:
+        parts = s.split(".")
+        if len(parts[-1]) == 3:
+            s = s.replace(".", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+@api_router.get("/products/template")
+async def products_template(user: dict = Depends(get_current_user)):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Template Stock"
+    headers = ["Nama Produk", "QTY", "Harga Modal", "Stock", "Keterangan"]
+    ws.append(headers)
+    style_header(ws, len(headers))
+    ws.append(["Contoh Produk A", 100, 302640, 73, "EXP 02/26"])
+    ws.append(["Contoh Produk B", 1, 93288, 0, ""])
+    widths = [32, 10, 16, 10, 16]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=template_stock.xlsx"},
+    )
+
+
+@api_router.post("/products/import")
+async def import_products(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    if not file.filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="File harus berformat Excel (.xlsx)")
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Gagal membaca file Excel")
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="File kosong")
+
+    header = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+
+    def col(*names):
+        for n in names:
+            if n in header:
+                return header.index(n)
+        return None
+
+    ci_nama = col("nama produk", "nama barang", "nama")
+    ci_qty = col("qty")
+    ci_modal = col("harga modal", "modal")
+    ci_stock = col("stock", "stok")
+    ci_ket = col("keterangan", "ket")
+
+    if ci_nama is None:
+        raise HTTPException(status_code=400, detail="Kolom 'Nama Produk' tidak ditemukan pada file")
+
+    created, updated, skipped = 0, 0, 0
+    errors = []
+    for idx, row in enumerate(rows[1:], start=2):
+        try:
+            nama = row[ci_nama] if ci_nama < len(row) else None
+            if nama is None or str(nama).strip() == "":
+                skipped += 1
+                continue
+            nama = str(nama).strip()
+            data = {
+                "nama_produk": nama,
+                "qty": _to_num(row[ci_qty]) if ci_qty is not None and ci_qty < len(row) else 1,
+                "harga_modal": _to_num(row[ci_modal]) if ci_modal is not None and ci_modal < len(row) else 0,
+                "stock": _to_num(row[ci_stock]) if ci_stock is not None and ci_stock < len(row) else 0,
+                "keterangan": (str(row[ci_ket]).strip() if ci_ket is not None and ci_ket < len(row) and row[ci_ket] not in (None, "") else ""),
+            }
+            if not data["qty"]:
+                data["qty"] = 1
+            existing = await db.products.find_one({"nama_produk": {"$regex": f"^{nama}$", "$options": "i"}})
+            if existing:
+                await db.products.update_one({"id": existing["id"]}, {"$set": data})
+                updated += 1
+            else:
+                prod = Product(**data)
+                await db.products.insert_one(prod.model_dump())
+                created += 1
+        except Exception as e:
+            errors.append(f"Baris {idx}: {str(e)}")
+
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": errors[:20]}
+
+
 
 
 # ---------------- Sales routes ----------------
