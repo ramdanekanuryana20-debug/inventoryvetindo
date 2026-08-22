@@ -230,6 +230,42 @@ async def create_sale(data: SaleInput, user: dict = Depends(get_current_user)):
     return doc
 
 
+@api_router.put("/sales/{sale_id}")
+async def update_sale(sale_id: str, data: SaleInput, user: dict = Depends(get_current_user)):
+    existing = await db.sales.find_one({"id": sale_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    if not data.items:
+        raise HTTPException(status_code=400, detail="Minimal 1 barang pada transaksi")
+    # restore stock of old items
+    for item in existing.get("items", []):
+        if item.get("product_id"):
+            await db.products.update_one(
+                {"id": item["product_id"]}, {"$inc": {"stock": abs(item.get("qty", 0))}}
+            )
+    # compute new totals
+    grand_total = 0.0
+    for item in data.items:
+        item.total = round(item.qty * item.harga, 2)
+        grand_total += item.total
+    # apply stock of new items
+    for item in data.items:
+        if item.product_id:
+            await db.products.update_one(
+                {"id": item.product_id}, {"$inc": {"stock": -abs(item.qty)}}
+            )
+    update_doc = {
+        "tanggal": data.tanggal,
+        "items": [i.model_dump() for i in data.items],
+        "grand_total": round(grand_total, 2),
+        "catatan": data.catatan or "",
+    }
+    await db.sales.update_one({"id": sale_id}, {"$set": update_doc})
+    doc = await db.sales.find_one({"id": sale_id})
+    doc.pop("_id", None)
+    return doc
+
+
 @api_router.delete("/sales/{sale_id}")
 async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
     sale = await db.sales.find_one({"id": sale_id})
@@ -313,6 +349,25 @@ async def sale_receipt(sale_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------- Dashboard ----------------
+@api_router.get("/dashboard/top-products")
+async def top_products(user: dict = Depends(get_current_user)):
+    sales = await db.sales.find().to_list(10000)
+    agg = {}
+    for s in sales:
+        for item in s.get("items", []):
+            name = item.get("nama_barang", "")
+            if not name:
+                continue
+            a = agg.setdefault(name, {"nama_barang": name, "qty": 0.0, "revenue": 0.0})
+            a["qty"] += item.get("qty", 0)
+            a["revenue"] += item.get("total", 0)
+    top = sorted(agg.values(), key=lambda x: x["qty"], reverse=True)[:5]
+    for t in top:
+        t["qty"] = round(t["qty"], 2)
+        t["revenue"] = round(t["revenue"], 2)
+    return top
+
+
 @api_router.get("/dashboard/monthly-sales")
 async def monthly_sales(user: dict = Depends(get_current_user)):
     sales = await db.sales.find().to_list(10000)

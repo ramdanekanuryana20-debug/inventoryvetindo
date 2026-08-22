@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter } from "lucide-react";
+import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -28,6 +28,7 @@ export default function Sales() {
   const [tanggal, setTanggal] = useState(today());
   const [items, setItems] = useState([emptyItem()]);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [startDate, setStartDate] = useState("");
@@ -76,24 +77,42 @@ export default function Sales() {
     if (p) setItem(idx, { product_id: p.id, nama_barang: p.nama_produk, harga: Math.round(p.modal_per_qty) });
   };
 
-  const openNew = () => { setTanggal(today()); setItems([emptyItem()]); setOpen(true); };
+  const openNew = () => { setEditingId(null); setTanggal(today()); setItems([emptyItem()]); setOpen(true); };
+
+  const openEdit = (s) => {
+    setEditingId(s.id);
+    setTanggal((s.tanggal || today()).slice(0, 10));
+    setItems((s.items || []).map((it) => ({
+      product_id: it.product_id || "",
+      nama_barang: it.nama_barang,
+      qty: it.qty,
+      harga: it.harga,
+    })));
+    setOpen(true);
+  };
 
   const save = async () => {
     const valid = items.filter((it) => it.nama_barang && Number(it.qty) > 0);
     if (valid.length === 0) { toast.error("Tambahkan minimal 1 barang"); return; }
     setSaving(true);
+    const payload = {
+      tanggal,
+      items: valid.map((it) => ({
+        product_id: it.product_id || null,
+        nama_barang: it.nama_barang,
+        qty: Number(it.qty),
+        harga: Number(it.harga) || 0,
+        total: (Number(it.qty) || 0) * (Number(it.harga) || 0),
+      })),
+    };
     try {
-      await api.post("/sales", {
-        tanggal,
-        items: valid.map((it) => ({
-          product_id: it.product_id || null,
-          nama_barang: it.nama_barang,
-          qty: Number(it.qty),
-          harga: Number(it.harga) || 0,
-          total: (Number(it.qty) || 0) * (Number(it.harga) || 0),
-        })),
-      });
-      toast.success("Transaksi disimpan, stock diperbarui");
+      if (editingId) {
+        await api.put(`/sales/${editingId}`, payload);
+        toast.success("Transaksi diperbarui, stock disesuaikan");
+      } else {
+        await api.post("/sales", payload);
+        toast.success("Transaksi disimpan, stock diperbarui");
+      }
       setOpen(false);
       loadSales();
       loadProducts();
@@ -183,6 +202,10 @@ export default function Sales() {
                     <div className="text-xs text-slate-400">Grand Total</div>
                     <div className="font-heading font-bold text-primary tabular-nums" data-testid="sale-grand-total">{rupiah(s.grand_total)}</div>
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} data-testid={`edit-sale-${s.id}`}
+                    className="p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors" title="Edit transaksi">
+                    <Pencil className="h-4 w-4" />
+                  </button>
                   <button onClick={(e) => { e.stopPropagation(); printReceipt(s.id); }} data-testid={`print-sale-${s.id}`}
                     className="p-1.5 rounded hover:bg-green-100 text-primary transition-colors" title="Cetak struk">
                     <Printer className="h-4 w-4" />
@@ -231,8 +254,8 @@ export default function Sales() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-white max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-heading">Transaksi Penjualan Baru</DialogTitle>
-            <DialogDescription>Pilih tanggal, tambahkan barang, dan simpan. Stock akan berkurang otomatis.</DialogDescription>
+            <DialogTitle className="font-heading">{editingId ? "Edit Transaksi Penjualan" : "Transaksi Penjualan Baru"}</DialogTitle>
+            <DialogDescription>Pilih tanggal, tambahkan barang, dan simpan. Stock akan disesuaikan otomatis.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="max-w-xs">
@@ -296,7 +319,7 @@ export default function Sales() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
             <Button onClick={save} disabled={saving} data-testid="save-sale-button">
-              {saving ? "Menyimpan..." : "Simpan Transaksi"}
+              {saving ? "Menyimpan..." : editingId ? "Simpan Perubahan" : "Simpan Transaksi"}
             </Button>
           </DialogFooter>
         </DialogContent>

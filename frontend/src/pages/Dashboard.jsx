@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { rupiah } from "@/lib/format";
-import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays } from "lucide-react";
+import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 function StatCard({ icon: Icon, label, value, sub, testid, accent }) {
@@ -22,10 +22,12 @@ function StatCard({ icon: Icon, label, value, sub, testid, accent }) {
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [monthly, setMonthly] = useState([]);
+  const [topProducts, setTopProducts] = useState([]);
 
   useEffect(() => {
     api.get("/dashboard/stats").then((res) => setStats(res.data)).catch(() => {});
     api.get("/dashboard/monthly-sales").then((res) => setMonthly(res.data)).catch(() => {});
+    api.get("/dashboard/top-products").then((res) => setTopProducts(res.data)).catch(() => {});
   }, []);
 
   return (
@@ -50,7 +52,8 @@ export default function Dashboard() {
           value={stats ? rupiah(stats.today_sales) : "—"} sub="Transaksi hari ini" />
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-5 mt-6" data-testid="monthly-sales-chart">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
+      <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg p-5" data-testid="monthly-sales-chart">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Rekap Penjualan Bulanan</h2>
@@ -79,6 +82,33 @@ export default function Dashboard() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg p-5" data-testid="top-products">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Produk Terlaris</h2>
+            <p className="text-xs text-slate-500">Berdasarkan jumlah terjual</p>
+          </div>
+          <Trophy className="h-5 w-5 text-amber-500" />
+        </div>
+        <div className="space-y-3">
+          {topProducts.map((p, i) => (
+            <div key={p.nama_barang} className="flex items-center gap-3" data-testid="top-product-row">
+              <div className={`h-7 w-7 shrink-0 rounded-md flex items-center justify-center text-xs font-bold ${
+                i === 0 ? "bg-amber-100 text-amber-700" : i === 1 ? "bg-slate-200 text-slate-600" : i === 2 ? "bg-orange-100 text-orange-700" : "bg-slate-100 text-slate-500"
+              }`}>{i + 1}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-slate-800 truncate">{p.nama_barang}</div>
+                <div className="text-xs text-slate-400">{p.qty} terjual · {rupiah(p.revenue)}</div>
+              </div>
+            </div>
+          ))}
+          {topProducts.length === 0 && (
+            <div className="text-sm text-slate-400 py-8 text-center">Belum ada penjualan.</div>
+          )}
+        </div>
+      </div>
       </div>
     </div>
   );
