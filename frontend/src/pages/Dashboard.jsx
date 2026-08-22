@@ -1,19 +1,30 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { rupiah } from "@/lib/format";
-import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy } from "lucide-react";
+import { rupiah, num } from "@/lib/format";
+import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy, ChevronRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useNavigate } from "react-router-dom";
 
-function StatCard({ icon: Icon, label, value, sub, testid, accent }) {
+function StatCard({ icon: Icon, label, value, sub, testid, accent, onClick }) {
+  const clickable = typeof onClick === "function";
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-5 hover:shadow-sm transition-shadow" data-testid={testid}>
+    <div
+      className={`bg-white border border-slate-200 rounded-lg p-5 transition-shadow ${clickable ? "cursor-pointer hover:shadow-md hover:border-amber-300" : "hover:shadow-sm"}`}
+      data-testid={testid}
+      onClick={onClick}
+      role={clickable ? "button" : undefined}
+    >
       <div className="flex items-center justify-between">
         <span className="text-sm text-slate-500 font-medium">{label}</span>
         <div className={`h-9 w-9 rounded-md flex items-center justify-center ${accent}`}>
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <div className="font-heading text-2xl font-extrabold tracking-tight text-slate-900 mt-3 tabular-nums">{value}</div>
+      <div className="font-heading text-2xl font-extrabold tracking-tight text-slate-900 mt-3 tabular-nums flex items-center gap-2">
+        {value}
+        {clickable && <ChevronRight className="h-4 w-4 text-amber-500" />}
+      </div>
       {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
     </div>
   );
@@ -23,12 +34,22 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [monthly, setMonthly] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
+  const [emptyOpen, setEmptyOpen] = useState(false);
+  const [emptyProducts, setEmptyProducts] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/dashboard/stats").then((res) => setStats(res.data)).catch(() => {});
     api.get("/dashboard/monthly-sales").then((res) => setMonthly(res.data)).catch(() => {});
     api.get("/dashboard/top-products").then((res) => setTopProducts(res.data)).catch(() => {});
   }, []);
+
+  const openEmptyStock = () => {
+    api.get("/products").then((res) => {
+      setEmptyProducts(res.data.filter((p) => (p.stock || 0) <= 0));
+      setEmptyOpen(true);
+    }).catch(() => {});
+  };
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">
@@ -43,7 +64,7 @@ export default function Dashboard() {
         <StatCard testid="stat-total-products" icon={Package} label="Total Produk" accent="bg-blue-100 text-blue-700"
           value={stats ? stats.total_products : "—"} sub="Jenis barang terdaftar" />
         <StatCard testid="stat-low-stock" icon={AlertTriangle} label="Stock Habis" accent="bg-amber-100 text-amber-700"
-          value={stats ? stats.low_stock : "—"} sub="Produk dengan stock 0" />
+          value={stats ? stats.low_stock : "—"} sub="Klik untuk lihat barangnya" onClick={openEmptyStock} />
         <StatCard testid="stat-total-sales" icon={TrendingUp} label="Total Penjualan" accent="bg-emerald-100 text-emerald-700"
           value={stats ? rupiah(stats.total_sales_amount) : "—"} sub="Akumulasi semua transaksi" />
         <StatCard testid="stat-transactions" icon={ShoppingCart} label="Jumlah Transaksi" accent="bg-purple-100 text-purple-700"
@@ -110,6 +131,40 @@ export default function Dashboard() {
         </div>
       </div>
       </div>
+
+      <Dialog open={emptyOpen} onOpenChange={setEmptyOpen}>
+        <DialogContent className="bg-white max-w-md" data-testid="empty-stock-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" /> Barang Stock Habis
+            </DialogTitle>
+            <DialogDescription>Daftar barang dengan stock 0 atau kurang. Segera lakukan restock.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto -mx-2 px-2">
+            {emptyProducts.map((p) => (
+              <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-slate-100" data-testid="empty-stock-row">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800 truncate">{p.nama_produk}</div>
+                  {p.keterangan && <div className="text-xs text-amber-700">{p.keterangan}</div>}
+                </div>
+                <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full shrink-0 ml-3">
+                  stok {num(p.stock)}
+                </span>
+              </div>
+            ))}
+            {emptyProducts.length === 0 && (
+              <div className="text-sm text-slate-400 py-8 text-center">Tidak ada barang yang habis.</div>
+            )}
+          </div>
+          <button
+            onClick={() => { setEmptyOpen(false); navigate("/inventory"); }}
+            data-testid="goto-inventory-button"
+            className="mt-2 w-full text-sm font-medium text-primary hover:underline"
+          >
+            Kelola Stock Barang →
+          </button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
