@@ -20,6 +20,9 @@ import bcrypt
 import jwt
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
+from reportlab.lib.pagesizes import A5
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas as pdfcanvas
 
 # ---------------- DB ----------------
 mongo_url = os.environ['MONGO_URL']
@@ -188,8 +191,17 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
 
 # ---------------- Sales routes ----------------
 @api_router.get("/sales")
-async def list_sales(user: dict = Depends(get_current_user)):
-    docs = await db.sales.find().sort("created_at", -1).to_list(5000)
+async def list_sales(start: Optional[str] = None, end: Optional[str] = None,
+                     user: dict = Depends(get_current_user)):
+    query = {}
+    if start or end:
+        cond = {}
+        if start:
+            cond["$gte"] = start
+        if end:
+            cond["$lte"] = end + "\uffff"
+        query["tanggal"] = cond
+    docs = await db.sales.find(query).sort("tanggal", -1).to_list(5000)
     for d in docs:
         d.pop("_id", None)
     return docs
@@ -220,10 +232,84 @@ async def create_sale(data: SaleInput, user: dict = Depends(get_current_user)):
 
 @api_router.delete("/sales/{sale_id}")
 async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
-    res = await db.sales.delete_one({"id": sale_id})
-    if res.deleted_count == 0:
+    sale = await db.sales.find_one({"id": sale_id})
+    if not sale:
         raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
-    return {"message": "Transaksi dihapus"}
+    for item in sale.get("items", []):
+        if item.get("product_id"):
+            await db.products.update_one(
+                {"id": item["product_id"]},
+                {"$inc": {"stock": abs(item.get("qty", 0))}}
+            )
+    await db.sales.delete_one({"id": sale_id})
+    return {"message": "Transaksi dihapus, stock dikembalikan"}
+
+
+@api_router.get("/sales/{sale_id}/receipt")
+async def sale_receipt(sale_id: str, user: dict = Depends(get_current_user)):
+    sale = await db.sales.find_one({"id": sale_id})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+
+    buf = io.BytesIO()
+    width, height = A5
+    c = pdfcanvas.Canvas(buf, pagesize=A5)
+    y = height - 18 * mm
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width / 2, y, "VetStock")
+    y -= 6 * mm
+    c.setFont("Helvetica", 9)
+    c.drawCentredString(width / 2, y, "Struk Penjualan")
+    y -= 8 * mm
+
+    c.setFont("Helvetica", 9)
+    c.drawString(15 * mm, y, f"Tanggal: {sale.get('tanggal', '')}")
+    y -= 5 * mm
+    c.drawString(15 * mm, y, f"No: {sale.get('id', '')[:8].upper()}")
+    y -= 6 * mm
+
+    c.line(15 * mm, y, width - 15 * mm, y)
+    y -= 6 * mm
+
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(15 * mm, y, "Barang")
+    c.drawRightString(width - 55 * mm, y, "Qty")
+    c.drawRightString(width - 30 * mm, y, "Harga")
+    c.drawRightString(width - 15 * mm, y, "Total")
+    y -= 5 * mm
+
+    c.setFont("Helvetica", 8)
+    for item in sale.get("items", []):
+        name = str(item.get("nama_barang", ""))[:28]
+        c.drawString(15 * mm, y, name)
+        c.drawRightString(width - 55 * mm, y, f"{item.get('qty', 0):g}")
+        c.drawRightString(width - 30 * mm, y, rupiah(item.get("harga", 0)))
+        c.drawRightString(width - 15 * mm, y, rupiah(item.get("total", 0)))
+        y -= 5 * mm
+        if y < 25 * mm:
+            c.showPage()
+            y = height - 18 * mm
+            c.setFont("Helvetica", 8)
+
+    y -= 2 * mm
+    c.line(15 * mm, y, width - 15 * mm, y)
+    y -= 7 * mm
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(15 * mm, y, "GRAND TOTAL")
+    c.drawRightString(width - 15 * mm, y, rupiah(sale.get("grand_total", 0)))
+    y -= 12 * mm
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawCentredString(width / 2, y, "Terima kasih atas kunjungan Anda")
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=struk_{sale_id[:8]}.pdf"},
+    )
 
 
 # ---------------- Dashboard ----------------

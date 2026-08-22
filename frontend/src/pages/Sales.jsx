@@ -14,7 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter } from "lucide-react";
 import { toast } from "sonner";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -29,10 +29,40 @@ export default function Sales() {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [expanded, setExpanded] = useState({});
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
-  const loadSales = () => api.get("/sales").then((res) => setSales(res.data)).catch(() => {});
+  const loadSales = (start, end) => {
+    const params = {};
+    if (start) params.start = start;
+    if (end) params.end = end;
+    return api.get("/sales", { params }).then((res) => setSales(res.data)).catch(() => {});
+  };
   const loadProducts = () => api.get("/products").then((res) => setProducts(res.data)).catch(() => {});
   useEffect(() => { loadSales(); loadProducts(); }, []);
+
+  const applyFilter = () => loadSales(startDate, endDate);
+  const resetFilter = () => { setStartDate(""); setEndDate(""); loadSales(); };
+
+  const filteredTotal = sales.reduce((s, sale) => s + (sale.grand_total || 0), 0);
+
+  const printReceipt = async (id) => {
+    try {
+      const res = await api.get(`/sales/${id}/receipt`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const w = window.open(url, "_blank");
+      if (w) {
+        w.addEventListener("load", () => w.print());
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `struk_${id.slice(0, 8)}.pdf`;
+        a.click();
+      }
+    } catch {
+      toast.error("Gagal membuat struk");
+    }
+  };
 
   const grandTotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.harga) || 0), 0);
 
@@ -115,6 +145,25 @@ export default function Sales() {
         </div>
       </div>
 
+      <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap items-end gap-3" data-testid="sales-filter-bar">
+        <div>
+          <Label className="text-xs text-slate-500">Dari Tanggal</Label>
+          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} data-testid="filter-start-date" className="mt-1 h-9 w-44" />
+        </div>
+        <div>
+          <Label className="text-xs text-slate-500">Sampai Tanggal</Label>
+          <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} data-testid="filter-end-date" className="mt-1 h-9 w-44" />
+        </div>
+        <Button variant="default" onClick={applyFilter} data-testid="apply-filter-button" className="h-9">
+          <Filter className="h-4 w-4 mr-2" /> Terapkan
+        </Button>
+        <Button variant="outline" onClick={resetFilter} data-testid="reset-filter-button" className="h-9">Reset</Button>
+        <div className="ml-auto text-right">
+          <div className="text-xs text-slate-400">Total (tampilan ini)</div>
+          <div className="font-heading font-bold text-primary tabular-nums" data-testid="filtered-total">{rupiah(filteredTotal)}</div>
+        </div>
+      </div>
+
       <div className="space-y-3" data-testid="sales-list">
         {sales.map((s) => {
           const isOpen = expanded[s.id];
@@ -133,6 +182,10 @@ export default function Sales() {
                     <div className="text-xs text-slate-400">Grand Total</div>
                     <div className="font-heading font-bold text-primary tabular-nums" data-testid="sale-grand-total">{rupiah(s.grand_total)}</div>
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); printReceipt(s.id); }} data-testid={`print-sale-${s.id}`}
+                    className="p-1.5 rounded hover:bg-green-100 text-primary transition-colors" title="Cetak struk">
+                    <Printer className="h-4 w-4" />
+                  </button>
                   <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} data-testid={`delete-sale-${s.id}`}
                     className="p-1.5 rounded hover:bg-red-100 text-red-600 transition-colors">
                     <Trash2 className="h-4 w-4" />
@@ -256,7 +309,7 @@ export default function Sales() {
         <AlertDialogContent className="bg-white">
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus transaksi?</AlertDialogTitle>
-            <AlertDialogDescription>Tindakan ini tidak dapat dibatalkan. Stock tidak dikembalikan otomatis.</AlertDialogDescription>
+            <AlertDialogDescription>Tindakan ini tidak dapat dibatalkan. Stock barang akan dikembalikan otomatis.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
