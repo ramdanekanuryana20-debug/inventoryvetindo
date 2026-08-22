@@ -351,7 +351,7 @@ async def sale_receipt(sale_id: str, user: dict = Depends(get_current_user)):
 # ---------------- Dashboard ----------------
 @api_router.get("/dashboard/top-products")
 async def top_products(user: dict = Depends(get_current_user)):
-    sales = await db.sales.find().to_list(10000)
+    sales = await db.sales.find({}, {"items": 1, "_id": 0}).to_list(10000)
     agg = {}
     for s in sales:
         for item in s.get("items", []):
@@ -370,7 +370,7 @@ async def top_products(user: dict = Depends(get_current_user)):
 
 @api_router.get("/dashboard/monthly-sales")
 async def monthly_sales(user: dict = Depends(get_current_user)):
-    sales = await db.sales.find().to_list(10000)
+    sales = await db.sales.find({}, {"tanggal": 1, "grand_total": 1, "_id": 0}).to_list(10000)
     now = datetime.now(timezone.utc)
     buckets = []
     labels_id = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
@@ -395,7 +395,7 @@ async def monthly_sales(user: dict = Depends(get_current_user)):
 
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
-    products = await db.products.find().to_list(5000)
+    products = await db.products.find({}, {"qty": 1, "harga_modal": 1, "stock": 1, "_id": 0}).to_list(5000)
     total_modal = 0.0
     low_stock = 0
     for p in products:
@@ -405,7 +405,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
             low_stock += 1
     total_products = len(products)
 
-    sales = await db.sales.find().to_list(5000)
+    sales = await db.sales.find({}, {"grand_total": 1, "tanggal": 1, "_id": 0}).to_list(5000)
     total_sales_amount = sum(s.get("grand_total", 0) for s in sales)
     total_transactions = len(sales)
 
