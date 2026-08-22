@@ -1,0 +1,86 @@
+{
+  "theme_strategy": "Light mode prioritized (High-Density Dashboard for data entry). Archetype 4 (Swiss & High-Contrast) adapted for clinical/financial trust.",
+  "typography": {
+    "headings": {
+      "font": "Manrope",
+      "instruction": "Use tracking-tight for H1/H2. Avoid standard Inter for headings. Use for Dashboard titles, stat card values."
+    },
+    "body": {
+      "font": "IBM Plex Sans",
+      "instruction": "Crucial for tabular data. Use class `tabular-nums` for all numeric columns (Rupiah, Qty, Totals) to ensure decimal alignment."
+    }
+  },
+  "colors": {
+    "background": {
+      "app": "#F8FAFC", 
+      "surface": "#FFFFFF",
+      "surface_alt": "#F1F5F9"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "tertiary": "#94A3B8"
+    },
+    "brand": {
+      "primary": "#166534",
+      "instruction": "Deep Forest Green to symbolize veterinary/pharmacy trust and financial stability. Use for primary buttons, active states, and Sidebar highlights."
+    },
+    "status": {
+      "critical": "#DC2626", 
+      "warning": "#D97706",
+      "success": "#16A34A"
+    }
+  },
+  "spacing_and_layout": {
+    "grid_system": "High Density Bento/Dashboard Grid",
+    "sidebar": "Fixed left sidebar (w-64), collapsed on mobile. Dense navigation links (py-2).",
+    "main_content": "Edge-to-edge padding (px-4 sm:px-6 lg:px-8) to maximize table width.",
+    "tables": "Use 'border-collapse'. Keep padding tight (px-3 py-2 or py-3). Add sticky headers."
+  },
+  "component_instructions": {
+    "cards": "Flat design. 1px border (#E2E8F0), no shadow by default, subtle shadow-sm on hover. Rounded-md.",
+    "inputs": "Dense form fields. Use h-8 or h-9 for inputs inside the Sales Entry table to maximize visible rows.",
+    "buttons": "Slightly rounded (rounded-md), crisp edges. Avoid large pill shapes for dense data environments.",
+    "tables": "CRITICAL: Must include zebra striping (odd:bg-white even:bg-slate-50). Right-align all currency and quantity columns. Use Shadcn Table primitives.",
+    "slide_overs": "Use Shadcn Sheet for 'Add Product' or 'Edit Product' to prevent losing context of the inventory table."
+  },
+  "visual_enhancers": {
+    "status_badges": "Use soft backgrounds with crisp text (e.g., bg-red-100 text-red-800 for 'Expired' or 'Low Stock').",
+    "dividers": "Use border-slate-200 to separate header from content and sidebar from main content."
+  },
+  "pages": {
+    "login": "Split screen. Left: crisp white login form. Right: full bleed image from image_urls.",
+    "dashboard": "Top row: 3-4 StatCards (Total Modal, Total Products, Today's Sales). Clean minimal design.",
+    "inventory": "Full width table. Columns: Nama Produk, QTY, Harga Modal, Modal/QTY, Stock, Modal/Fisik, Total Modal, Keterangan.",
+    "sales": "Two-part layout: Top section for Date/Meta, Bottom section is a dynamic editable table for line items (Product, Qty, Price, Total) with a persistent Grand Total bar at the bottom."
+  },
+  "accessibility": {
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (e.g., `data-testid=\"login-submit-button\"`, `data-testid=\"inventory-table-row\"`).",
+    "contrast": "Ensure text over brand colors meets APCA standards. Focus rings must be visible (focus:ring-2 focus:ring-green-600 focus:ring-offset-2)."
+  },
+  "image_urls": {
+    "login_background": {
+      "url": "https://images.pexels.com/photos/9628834/pexels-photo-9628834.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "background",
+      "description": "Brown glass bottles on a laboratory shelf, ideal for pharmacy/vet context. Use on the right half of the login page."
+    },
+    "login_background_alt": {
+      "url": "https://images.pexels.com/photos/9574344/pexels-photo-9574344.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "background",
+      "description": "Clean sterile hospital/clinic hallway. Fallback option for login screen."
+    }
+  },
+  "universal_guidelines_for_main_agent": [
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Don't make generic centered layouts. Left-align data tables, right-align numbers.",
+    "Use glass-morphism ONLY for sticky headers or dropdowns if necessary, but prefer solid `#FFFFFF` with borders for data-heavy apps to prevent refraction.",
+    "You MUST NOT apply universal transition (`transition: all`). Add transitions for specific interactive elements like button, input.",
+    "You MUST NOT center align the app container. Do not add `.App { text-align: center; }` in the css file.",
+    "Always use modern button styles (sharp or slightly rounded with interaction animations).",
+    "NEVER use AI assistant Emoji characters (robot, brain, lightbulb) for icons. Use Phosphor or Lucide icons.",
+    "Use `sonner` for toast notifications.",
+    "Use 2-3x more spacing for high-level layouts, but tight padding (`p-2`, `p-3`) inside dense data tables.",
+    "Number formatting is CRITICAL: Ensure Rupiah (Rp) is formatted correctly with thousand separators (e.g., Rp 1.500.000).",
+    "DO NOT use complete `transparent` background in header, overlays, any surface that has content under it. Example: Dropdown with transparent background"
+  ]
+}

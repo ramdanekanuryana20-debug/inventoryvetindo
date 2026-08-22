@@ -1,0 +1,34 @@
+{
+  "summary": "Full backend + frontend testing of Indonesian veterinary pharmacy Inventory & Sales system. Backend: 13/13 pytest cases pass including auth, product CRUD with computed modal_per_qty/modal_fisik, sale creation with stock decrement via $inc, dashboard stats, and both Excel exports. Frontend: Login -> Dashboard (all 6 stats visible) -> Inventory create product -> Sales create transaction with product select, qty and harga all worked. Grand total computed correctly (Rp 15.000) and sale card rendered. Stock decrement verified via API test. Only issue observed is benign webpack-dev overlay for ResizeObserver warnings from Radix Select.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All pages (dev only)", "issues": ["ResizeObserver loop warnings from Radix Select trigger the webpack-dev-server 'Uncaught runtime errors' overlay in dev builds. Not a real bug and does not appear in production builds, but interferes with UX during dev. Consider adding a small window.addEventListener('error', ...) suppressor for 'ResizeObserver loop' or upgrading Radix, OR disabling the webpack-dev overlay in the dev config."]},
+      {"screen": "Dialogs (Add Product, Add Sale)", "issues": ["React a11y warning: 'Missing Description or aria-describedby for DialogContent'. Add a DialogDescription or aria-describedby to Radix DialogContent."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Silence ResizeObserver dev overlay noise so the webpack-dev-server error overlay does not obscure the UI in preview builds.",
+    "(Optional) Add DialogDescription/aria-describedby to modal dialogs to satisfy Radix a11y warnings."
+  ],
+  "critical_code_review_comments": [
+    "Sale delete does not restore stock (product stock is not incremented back on DELETE /api/sales/{id}). If this is expected behavior it can be ignored; otherwise consider adding a compensating $inc back.",
+    "POST /api/sales updates stock without a transaction — if the update_one fails after the sale is inserted, data can drift. Acceptable for MVP.",
+    "startup() silently resets admin password when it doesn't match env each restart; good for dev, but keep in mind for prod."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin: ramdanekanuryana20@gmail.com / admin123 (working)",
+  "seed_data_creation": "Test data created during runs is prefixed TEST_ and cleaned up by TestZCleanup; no residual test data expected.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/backend_test.py covers auth, products (incl. computed fields), sales (incl. stock decrement), dashboard stats, and Excel exports. Frontend flows verified through public REACT_APP_BACKEND_URL. Radix Select inside modal requires waiting ~400ms after opening before clicking option. Dev overlay for ResizeObserver appears but does not block functionality."
+}
