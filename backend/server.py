@@ -297,6 +297,136 @@ async def import_products(file: UploadFile = File(...), user: dict = Depends(get
 
 
 
+@api_router.get("/sales/template")
+async def sales_template(user: dict = Depends(get_current_user)):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Template Penjualan"
+    headers = ["Tanggal", "Nama Barang", "QTY", "Harga"]
+    ws.append(headers)
+    style_header(ws, len(headers))
+    ws.append(["2026-06-15", "ACIDURIN TABLET", 5, 3026])
+    ws.append(["2026-06-15", "AMINAVAST / CAPS", 2, 7500])
+    ws.append(["2026-06-16", "BESAME / TABS", 1, 12636])
+    widths = [16, 32, 10, 16]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=template_penjualan.xlsx"},
+    )
+
+
+def _fmt_date_cell(v):
+    if v is None:
+        return ""
+    if isinstance(v, datetime):
+        return v.date().isoformat()
+    if hasattr(v, "isoformat"):
+        try:
+            return v.isoformat()[:10]
+        except Exception:
+            return str(v).strip()
+    return str(v).strip()
+
+
+@api_router.post("/sales/import")
+async def import_sales(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    if not file.filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="File harus berformat Excel (.xlsx)")
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Gagal membaca file Excel")
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="File kosong")
+
+    header = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+
+    def col(*names):
+        for n in names:
+            if n in header:
+                return header.index(n)
+        return None
+
+    ci_tgl = col("tanggal", "tgl", "date")
+    ci_nama = col("nama barang", "nama produk", "barang", "nama")
+    ci_qty = col("qty", "jumlah")
+    ci_harga = col("harga", "harga jual")
+
+    if ci_tgl is None or ci_nama is None:
+        raise HTTPException(status_code=400, detail="Kolom 'Tanggal' dan 'Nama Barang' wajib ada")
+
+    # cache product lookup by lowercased name
+    prod_docs = await db.products.find({}, {"id": 1, "nama_produk": 1, "_id": 0}).to_list(5000)
+    prod_map = {p["nama_produk"].strip().lower(): p["id"] for p in prod_docs}
+
+    groups = {}
+    order = []
+    skipped = 0
+    errors = []
+    for idx, row in enumerate(rows[1:], start=2):
+        try:
+            tgl = _fmt_date_cell(row[ci_tgl]) if ci_tgl < len(row) else ""
+            nama = row[ci_nama] if ci_nama < len(row) else None
+            if not tgl or nama is None or str(nama).strip() == "":
+                skipped += 1
+                continue
+            nama = str(nama).strip()
+            qty = _to_num(row[ci_qty]) if ci_qty is not None and ci_qty < len(row) else 0
+            harga = _to_num(row[ci_harga]) if ci_harga is not None and ci_harga < len(row) else 0
+            if qty <= 0:
+                skipped += 1
+                continue
+            item = {
+                "product_id": prod_map.get(nama.lower()),
+                "nama_barang": nama,
+                "qty": qty,
+                "harga": harga,
+                "total": round(qty * harga, 2),
+            }
+            if tgl not in groups:
+                groups[tgl] = []
+                order.append(tgl)
+            groups[tgl].append(item)
+        except Exception as e:
+            errors.append(f"Baris {idx}: {str(e)}")
+
+    transactions_created = 0
+    items_imported = 0
+    for tgl in order:
+        items = groups[tgl]
+        grand_total = round(sum(i["total"] for i in items), 2)
+        sale = {
+            "id": str(uuid.uuid4()),
+            "tanggal": tgl,
+            "items": items,
+            "grand_total": grand_total,
+            "catatan": "Import Excel",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.sales.insert_one(sale)
+        transactions_created += 1
+        items_imported += len(items)
+        for it in items:
+            if it.get("product_id"):
+                await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -abs(it["qty"])}})
+
+    return {
+        "transactions_created": transactions_created,
+        "items_imported": items_imported,
+        "skipped": skipped,
+        "errors": errors[:20],
+    }
+
+
 # ---------------- Sales routes ----------------
 @api_router.get("/sales")
 async def list_sales(start: Optional[str] = None, end: Optional[str] = None,

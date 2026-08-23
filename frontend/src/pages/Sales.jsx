@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter, Pencil } from "lucide-react";
+import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter, Pencil, Upload, FileSpreadsheet, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -33,6 +33,10 @@ export default function Sales() {
   const [expanded, setExpanded] = useState({});
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   const loadSales = (start, end) => {
     const params = {};
@@ -148,6 +152,41 @@ export default function Sales() {
     }
   };
 
+  const downloadTemplate = async () => {
+    try {
+      const res = await api.get("/sales/template", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "template_penjualan.xlsx";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Gagal mengunduh template");
+    }
+  };
+
+  const openImport = () => { setImportFile(null); setImportResult(null); setImportOpen(true); };
+
+  const handleImport = async () => {
+    if (!importFile) { toast.error("Pilih file Excel dulu"); return; }
+    setImporting(true);
+    setImportResult(null);
+    const fd = new FormData();
+    fd.append("file", importFile);
+    try {
+      const res = await api.post("/sales/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setImportResult(res.data);
+      toast.success(`Berhasil: ${res.data.transactions_created} transaksi diimport`);
+      loadSales();
+      loadProducts();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Gagal import file");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -156,6 +195,9 @@ export default function Sales() {
           <p className="text-sm text-slate-500 mt-1">{sales.length} transaksi tercatat</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={openImport} data-testid="import-sales-button">
+            <Upload className="h-4 w-4 mr-2" /> Import Excel
+          </Button>
           <Button variant="outline" onClick={exportExcel} data-testid="export-sales-button">
             <Download className="h-4 w-4 mr-2" /> Export Excel
           </Button>
@@ -337,6 +379,66 @@ export default function Sales() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="bg-white max-w-lg" data-testid="import-sales-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-primary" /> Import Penjualan dari Excel
+            </DialogTitle>
+            <DialogDescription>
+              Upload file Excel berisi transaksi penjualan. Baris dengan tanggal sama akan digabung menjadi satu transaksi. Stock berkurang otomatis.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-sm">
+              <p className="text-slate-600 mb-2">Kolom yang didukung: <span className="font-medium">Tanggal, Nama Barang, QTY, Harga</span>.</p>
+              <button onClick={downloadTemplate} data-testid="download-sales-template-button"
+                className="text-primary font-medium hover:underline inline-flex items-center gap-1">
+                <Download className="h-3.5 w-3.5" /> Unduh template contoh
+              </button>
+            </div>
+
+            <label className="block border-2 border-dashed border-slate-300 rounded-md p-6 text-center cursor-pointer hover:border-primary transition-colors">
+              <input
+                type="file"
+                accept=".xlsx,.xlsm"
+                className="hidden"
+                data-testid="import-sales-file-input"
+                onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); }}
+              />
+              <Upload className="h-6 w-6 mx-auto text-slate-400 mb-2" />
+              <div className="text-sm text-slate-600">
+                {importFile ? <span className="font-medium text-slate-800">{importFile.name}</span> : "Klik untuk pilih file .xlsx"}
+              </div>
+            </label>
+
+            {importResult && (
+              <div className="text-sm bg-green-50 border border-green-200 rounded-md p-3" data-testid="import-sales-result">
+                <div className="text-green-800 font-medium">Import selesai:</div>
+                <ul className="text-slate-600 mt-1 space-y-0.5">
+                  <li>• {importResult.transactions_created} transaksi dibuat</li>
+                  <li>• {importResult.items_imported} baris barang diimport</li>
+                  <li>• {importResult.skipped} baris dilewati (kosong/tidak valid)</li>
+                </ul>
+                {importResult.errors?.length > 0 && (
+                  <div className="text-red-600 mt-2 text-xs">
+                    {importResult.errors.map((e, i) => <div key={i}>{e}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)}>Tutup</Button>
+            <Button onClick={handleImport} disabled={importing || !importFile} data-testid="submit-sales-import-button">
+              {importing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Mengimport...</> : "Import Sekarang"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
