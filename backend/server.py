@@ -182,15 +182,22 @@ async def create_bill_for_sale(sale_id: str, tanggal: str, items: list):
 
 
 async def update_bill_for_sale(sale_id: str, tanggal: str, items: list):
-    amount, breakdown = await _compute_bill(items)
     existing = await db.supplier_bills.find_one({"sale_id": sale_id})
-    if existing:
+    if not existing:
+        await create_bill_for_sale(sale_id, tanggal, items)
+        return
+    payments = existing.get("payments", []) or []
+    paid = sum(p.get("jumlah", 0) for p in payments)
+    already_paid = paid > 0 or existing.get("status") == "paid"
+    if already_paid:
+        # Tagihan sudah dibayar (sebagian/lunas): pertahankan nominal & rincian asli, sinkronkan tanggal saja
+        await db.supplier_bills.update_one({"sale_id": sale_id}, {"$set": {"tanggal": tanggal}})
+    else:
+        amount, breakdown = await _compute_bill(items)
         await db.supplier_bills.update_one(
             {"sale_id": sale_id},
             {"$set": {"tanggal": tanggal, "amount": amount, "items": breakdown}},
         )
-    else:
-        await create_bill_for_sale(sale_id, tanggal, items)
 
 
 # ---------------- Supplier Bill models ----------------
