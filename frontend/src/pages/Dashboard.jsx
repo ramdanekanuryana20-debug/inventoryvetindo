@@ -39,6 +39,8 @@ export default function Dashboard() {
   const [supplier, setSupplier] = useState(null);
   const [topPeriod, setTopPeriod] = useState("all");
   const [cashflow, setCashflow] = useState([]);
+  const [allOpen, setAllOpen] = useState(false);
+  const [allProducts, setAllProducts] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -51,6 +53,13 @@ export default function Dashboard() {
   useEffect(() => {
     api.get("/dashboard/top-products", { params: { period: topPeriod } }).then((res) => setTopProducts(res.data)).catch(() => {});
   }, [topPeriod]);
+
+  useEffect(() => {
+    if (!allOpen) return;
+    api.get("/dashboard/top-products", { params: { period: topPeriod, limit: 0 } }).then((res) => setAllProducts(res.data)).catch(() => {});
+  }, [allOpen, topPeriod]);
+
+  const periodLabel = { all: "Semua Waktu", month: "Bulan Ini", week: "Minggu Ini" };
 
   const openEmptyStock = () => {
     api.get("/products").then((res) => {
@@ -149,6 +158,10 @@ export default function Dashboard() {
             <div className="text-sm text-slate-400 py-8 text-center">Belum ada penjualan.</div>
           )}
         </div>
+        <button onClick={() => setAllOpen(true)} data-testid="view-all-top-products"
+          className="mt-4 w-full text-sm font-medium text-primary hover:underline">
+          Lihat Semua →
+        </button>
       </div>
       </div>
 
@@ -184,6 +197,43 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      <Dialog open={allOpen} onOpenChange={setAllOpen}>
+        <DialogContent className="bg-white max-w-lg" data-testid="all-products-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" /> Semua Produk Terlaris
+            </DialogTitle>
+            <DialogDescription>Semua produk yang pernah terjual, diurutkan dari yang paling banyak — periode: {periodLabel[topPeriod]}.</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-1 mb-1" data-testid="all-period-toggle">
+            {[["all", "Semua"], ["month", "Bulan Ini"], ["week", "Minggu Ini"]].map(([v, l]) => (
+              <button key={v} onClick={() => setTopPeriod(v)} data-testid={`all-period-${v}`}
+                className={`text-xs px-2.5 py-1 rounded-full transition-colors ${topPeriod === v ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto -mx-2 px-2">
+            {allProducts.map((p, i) => (
+              <div key={p.nama_barang} className="flex items-center gap-3 py-2.5 border-b border-slate-100" data-testid="all-product-row">
+                <div className={`h-7 w-7 shrink-0 rounded-md flex items-center justify-center text-xs font-bold ${
+                  i === 0 ? "bg-amber-100 text-amber-700" : i === 1 ? "bg-slate-200 text-slate-600" : i === 2 ? "bg-orange-100 text-orange-700" : "bg-slate-100 text-slate-500"
+                }`}>{i + 1}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-800 truncate">{p.nama_barang}</div>
+                  <div className="text-xs text-slate-400">{num(p.qty)} terjual</div>
+                </div>
+                <div className="text-sm font-semibold tabular-nums text-slate-700 shrink-0">{rupiah(p.revenue)}</div>
+              </div>
+            ))}
+            {allProducts.length === 0 && (
+              <div className="text-sm text-slate-400 py-10 text-center">Belum ada produk terjual untuk periode ini.</div>
+            )}
+          </div>
+          <div className="text-xs text-slate-400 pt-1">Total {allProducts.length} produk</div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={emptyOpen} onOpenChange={setEmptyOpen}>
         <DialogContent className="bg-white max-w-md" data-testid="empty-stock-dialog">

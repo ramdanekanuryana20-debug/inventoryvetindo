@@ -993,7 +993,7 @@ async def sale_receipt(sale_id: str, user: dict = Depends(get_current_user)):
 
 # ---------------- Dashboard ----------------
 @api_router.get("/dashboard/top-products")
-async def top_products(period: str = "all", user: dict = Depends(get_current_user)):
+async def top_products(period: str = "all", limit: int = 5, user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     month_prefix = now.strftime("%Y-%m")
     week_start = (now - timedelta(days=6)).date().isoformat()
@@ -1012,7 +1012,9 @@ async def top_products(period: str = "all", user: dict = Depends(get_current_use
             a = agg.setdefault(name, {"nama_barang": name, "qty": 0.0, "revenue": 0.0})
             a["qty"] += item.get("qty", 0)
             a["revenue"] += item.get("total", 0)
-    top = sorted(agg.values(), key=lambda x: x["qty"], reverse=True)[:5]
+    top = sorted(agg.values(), key=lambda x: x["qty"], reverse=True)
+    if limit and limit > 0:
+        top = top[:limit]
     for t in top:
         t["qty"] = round(t["qty"], 2)
         t["revenue"] = round(t["revenue"], 2)
