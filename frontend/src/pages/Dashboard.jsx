@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { rupiah, num } from "@/lib/format";
-import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy, ChevronRight, Receipt } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy, ChevronRight, Receipt, ArrowLeftRight } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
 
@@ -37,14 +37,20 @@ export default function Dashboard() {
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [emptyProducts, setEmptyProducts] = useState([]);
   const [supplier, setSupplier] = useState(null);
+  const [topPeriod, setTopPeriod] = useState("all");
+  const [cashflow, setCashflow] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/dashboard/stats").then((res) => setStats(res.data)).catch(() => {});
     api.get("/dashboard/monthly-sales").then((res) => setMonthly(res.data)).catch(() => {});
-    api.get("/dashboard/top-products").then((res) => setTopProducts(res.data)).catch(() => {});
     api.get("/supplier-bills/summary").then((res) => setSupplier(res.data)).catch(() => {});
+    api.get("/dashboard/cashflow").then((res) => setCashflow(res.data)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    api.get("/dashboard/top-products", { params: { period: topPeriod } }).then((res) => setTopProducts(res.data)).catch(() => {});
+  }, [topPeriod]);
 
   const openEmptyStock = () => {
     api.get("/products").then((res) => {
@@ -112,12 +118,20 @@ export default function Dashboard() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg p-5" data-testid="top-products">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Produk Terlaris</h2>
             <p className="text-xs text-slate-500">Berdasarkan jumlah terjual</p>
           </div>
           <Trophy className="h-5 w-5 text-amber-500" />
+        </div>
+        <div className="flex gap-1 mb-4" data-testid="top-period-toggle">
+          {[["all", "Semua"], ["month", "Bulan Ini"], ["week", "Minggu Ini"]].map(([v, l]) => (
+            <button key={v} onClick={() => setTopPeriod(v)} data-testid={`top-period-${v}`}
+              className={`text-xs px-2.5 py-1 rounded-full transition-colors ${topPeriod === v ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {l}
+            </button>
+          ))}
         </div>
         <div className="space-y-3">
           {topProducts.map((p, i) => (
@@ -136,6 +150,39 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg p-5 mt-6" data-testid="cashflow-chart">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-heading text-lg font-bold tracking-tight text-slate-900">Arus Kas Bulanan</h2>
+            <p className="text-xs text-slate-500">Penjualan vs Pembayaran ke Supplier (12 bulan)</p>
+          </div>
+          <ArrowLeftRight className="h-5 w-5 text-primary" />
+        </div>
+        <div style={{ width: "100%", height: 300 }}>
+          <ResponsiveContainer>
+            <BarChart data={cashflow} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#64748B" }} axisLine={false} tickLine={false} />
+              <YAxis
+                tick={{ fontSize: 11, fill: "#94A3B8" }}
+                axisLine={false}
+                tickLine={false}
+                width={70}
+                tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}jt` : v >= 1000 ? `${Math.round(v / 1000)}rb` : v)}
+              />
+              <Tooltip
+                formatter={(v, n) => [rupiah(v), n === "penjualan" ? "Penjualan" : "Bayar Supplier"]}
+                contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }}
+                cursor={{ fill: "rgba(22,101,52,0.06)" }}
+              />
+              <Legend formatter={(val) => (val === "penjualan" ? "Penjualan" : "Bayar Supplier")} wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="penjualan" fill="#166534" radius={[4, 4, 0, 0]} maxBarSize={22} />
+              <Bar dataKey="pembayaran" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={22} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       <Dialog open={emptyOpen} onOpenChange={setEmptyOpen}>

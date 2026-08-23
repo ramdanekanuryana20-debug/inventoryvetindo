@@ -88,6 +88,11 @@ class LoginInput(BaseModel):
     password: str
 
 
+class ChangePasswordInput(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class ProductInput(BaseModel):
     nama_produk: str
     qty: float = 1
@@ -533,6 +538,20 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 
+@api_router.post("/auth/change-password")
+async def change_password(data: ChangePasswordInput, user: dict = Depends(get_current_user)):
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password baru minimal 6 karakter")
+    dbuser = await db.users.find_one({"_id": ObjectId(user["id"])})
+    if not dbuser or not verify_password(data.current_password, dbuser["password_hash"]):
+        raise HTTPException(status_code=400, detail="Password saat ini salah")
+    await db.users.update_one(
+        {"_id": ObjectId(user["id"])},
+        {"$set": {"password_hash": hash_password(data.new_password)}},
+    )
+    return {"message": "Password berhasil diubah"}
+
+
 # ---------------- Product routes ----------------
 @api_router.get("/products")
 async def list_products(user: dict = Depends(get_current_user)):
@@ -967,10 +986,18 @@ async def sale_receipt(sale_id: str, user: dict = Depends(get_current_user)):
 
 # ---------------- Dashboard ----------------
 @api_router.get("/dashboard/top-products")
-async def top_products(user: dict = Depends(get_current_user)):
-    sales = await db.sales.find({}, {"items": 1, "_id": 0}).to_list(10000)
+async def top_products(period: str = "all", user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc)
+    month_prefix = now.strftime("%Y-%m")
+    week_start = (now - timedelta(days=6)).date().isoformat()
+    sales = await db.sales.find({}, {"items": 1, "tanggal": 1, "_id": 0}).to_list(10000)
     agg = {}
     for s in sales:
+        tgl = str(s.get("tanggal", ""))[:10]
+        if period == "month" and not tgl.startswith(month_prefix):
+            continue
+        if period == "week" and (not tgl or tgl < week_start):
+            continue
         for item in s.get("items", []):
             name = item.get("nama_barang", "")
             if not name:
@@ -983,6 +1010,37 @@ async def top_products(user: dict = Depends(get_current_user)):
         t["qty"] = round(t["qty"], 2)
         t["revenue"] = round(t["revenue"], 2)
     return top
+
+
+@api_router.get("/dashboard/cashflow")
+async def cashflow(user: dict = Depends(get_current_user)):
+    sales = await db.sales.find({}, {"tanggal": 1, "grand_total": 1, "_id": 0}).to_list(10000)
+    bills = await db.supplier_bills.find({}, {"payments": 1, "_id": 0}).to_list(10000)
+    now = datetime.now(timezone.utc)
+    labels_id = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+    buckets = []
+    for i in range(11, -1, -1):
+        y = now.year
+        m = now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        buckets.append({"key": f"{y}-{m:02d}", "label": f"{labels_id[m-1]} {str(y)[2:]}", "penjualan": 0.0, "pembayaran": 0.0})
+    idx = {b["key"]: b for b in buckets}
+    for s in sales:
+        key = str(s.get("tanggal", ""))[:7]
+        if key in idx:
+            idx[key]["penjualan"] += s.get("grand_total", 0)
+    for b in bills:
+        for p in b.get("payments", []) or []:
+            key = str(p.get("tanggal", ""))[:7]
+            if key in idx:
+                idx[key]["pembayaran"] += p.get("jumlah", 0)
+    for b in buckets:
+        b["penjualan"] = round(b["penjualan"], 2)
+        b["pembayaran"] = round(b["pembayaran"], 2)
+        b.pop("key", None)
+    return buckets
 
 
 @api_router.get("/dashboard/monthly-sales")

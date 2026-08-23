@@ -1,7 +1,13 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet } from "lucide-react";
+import { api, formatApiErrorDetail } from "@/lib/api";
+import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
@@ -14,10 +20,29 @@ const links = [
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [pwOpen, setPwOpen] = useState(false);
+  const [form, setForm] = useState({ current_password: "", new_password: "", confirm: "" });
+  const [saving, setSaving] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
+  };
+
+  const changePassword = async () => {
+    if (form.new_password.length < 6) { toast.error("Password baru minimal 6 karakter"); return; }
+    if (form.new_password !== form.confirm) { toast.error("Konfirmasi password tidak cocok"); return; }
+    setSaving(true);
+    try {
+      await api.post("/auth/change-password", { current_password: form.current_password, new_password: form.new_password });
+      toast.success("Password berhasil diubah");
+      setPwOpen(false);
+      setForm({ current_password: "", new_password: "", confirm: "" });
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Gagal mengubah password");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -57,6 +82,14 @@ export default function Layout({ children }) {
           </div>
           <Button
             variant="ghost"
+            onClick={() => setPwOpen(true)}
+            data-testid="open-change-password"
+            className="w-full justify-start text-white/80 hover:bg-white/10 hover:text-white"
+          >
+            <KeyRound className="h-4 w-4 mr-2" /> Ganti Password
+          </Button>
+          <Button
+            variant="ghost"
             onClick={handleLogout}
             data-testid="logout-button"
             className="w-full justify-start text-white/80 hover:bg-white/10 hover:text-white"
@@ -66,6 +99,40 @@ export default function Layout({ children }) {
         </div>
       </aside>
       <main className="flex-1 ml-64 min-h-screen">{children}</main>
+
+      <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+        <DialogContent className="bg-white max-w-sm" data-testid="change-password-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" /> Ganti Password
+            </DialogTitle>
+            <DialogDescription>Untuk keamanan, ganti password default sebelum aplikasi dipakai.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Password Saat Ini</Label>
+              <Input type="password" value={form.current_password} onChange={(e) => setForm({ ...form, current_password: e.target.value })}
+                data-testid="current-password-input" className="mt-1.5" />
+            </div>
+            <div>
+              <Label>Password Baru</Label>
+              <Input type="password" value={form.new_password} onChange={(e) => setForm({ ...form, new_password: e.target.value })}
+                data-testid="new-password-input" className="mt-1.5" />
+            </div>
+            <div>
+              <Label>Konfirmasi Password Baru</Label>
+              <Input type="password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })}
+                data-testid="confirm-password-input" className="mt-1.5" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwOpen(false)}>Batal</Button>
+            <Button onClick={changePassword} disabled={saving} data-testid="submit-change-password">
+              {saving ? "Menyimpan..." : "Simpan Password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
