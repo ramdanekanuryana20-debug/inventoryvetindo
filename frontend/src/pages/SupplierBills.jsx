@@ -5,8 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Receipt, CheckCircle2, Clock, ChevronDown, ChevronRight, Undo2, Wallet, Trash2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Receipt, CheckCircle2, Clock, ChevronDown, ChevronRight, Undo2, Wallet, Trash2, History } from "lucide-react";
 import { toast } from "sonner";
+
+const currentMonth = () => new Date().toISOString().slice(0, 7);
+const monthLabel = (m) => {
+  if (!m) return "";
+  const [y, mo] = m.split("-");
+  const names = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  return `${names[parseInt(mo, 10) - 1]} ${y}`;
+};
 
 const STATUS = {
   unpaid: { t: "Belum Dibayar", c: "bg-red-100 text-red-700" },
@@ -107,6 +116,7 @@ export default function SupplierBills() {
   const [payBill, setPayBill] = useState(null);
   const [payAmount, setPayAmount] = useState("");
   const [loading, setLoading] = useState(true);
+  const [bulan, setBulan] = useState(currentMonth());
 
   const load = () => api.get("/supplier-bills").then((res) => setBills(res.data)).catch(() => {}).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
@@ -147,16 +157,57 @@ export default function SupplierBills() {
     }
   };
 
-  const belumLunas = bills.filter((b) => b.status !== "paid");
-  const lunas = bills.filter((b) => b.status === "paid");
+  const availableMonths = Array.from(new Set(bills.map((b) => String(b.tanggal || "").slice(0, 7)).filter(Boolean))).sort().reverse();
+  const monthBills = bills.filter((b) => String(b.tanggal || "").slice(0, 7) === bulan);
+  const belumLunas = monthBills.filter((b) => b.status !== "paid");
+  const lunas = monthBills.filter((b) => b.status === "paid");
   const outstandingTotal = belumLunas.reduce((s, b) => s + (b.outstanding || 0), 0);
   const lunasTotal = lunas.reduce((s, b) => s + (b.amount || 0), 0);
+  const monthTotal = monthBills.reduce((s, b) => s + (b.amount || 0), 0);
+  const monthPaid = monthBills.reduce((s, b) => s + (b.paid_amount || 0), 0);
+  const monthOutstanding = monthBills.reduce((s, b) => s + (b.outstanding || 0), 0);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h1 className="font-heading text-3xl font-extrabold tracking-tight text-slate-900">Tagihan Supplier</h1>
-        <p className="text-sm text-slate-500 mt-1">Tagihan otomatis dari harga modal barang terjual. Bisa dibayar penuh atau sebagian (cicilan).</p>
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+        <div>
+          <h1 className="font-heading text-3xl font-extrabold tracking-tight text-slate-900">Tagihan Supplier</h1>
+          <p className="text-sm text-slate-500 mt-1">Tagihan otomatis dari harga modal barang terjual. Bisa dibayar penuh atau sebagian (cicilan).</p>
+        </div>
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Bulan</label>
+            <Input type="month" value={bulan} onChange={(e) => setBulan(e.target.value)} data-testid="bill-month-input" className="mt-1 h-9 w-44" />
+          </div>
+          {availableMonths.length > 0 && (
+            <div>
+              <label className="text-xs text-slate-500 flex items-center gap-1"><History className="h-3 w-3" /> Riwayat</label>
+              <Select value="" onValueChange={(v) => setBulan(v)}>
+                <SelectTrigger data-testid="bill-history-select" className="h-9 w-48 mt-1"><SelectValue placeholder="Pilih bulan lalu" /></SelectTrigger>
+                <SelectContent className="bg-white">
+                  {availableMonths.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="text-sm font-medium text-primary mb-4">Periode: {monthLabel(bulan)}</div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white border border-slate-200 rounded-lg p-4" data-testid="month-total">
+          <div className="text-sm text-slate-500">Total Tagihan Bulan Ini</div>
+          <div className="font-heading text-xl font-extrabold tabular-nums text-slate-900 mt-1">{loading ? "…" : rupiah(monthTotal)}</div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4" data-testid="month-paid">
+          <div className="text-sm text-slate-500">Sudah Dibayar</div>
+          <div className="font-heading text-xl font-extrabold tabular-nums text-green-600 mt-1">{loading ? "…" : rupiah(monthPaid)}</div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4" data-testid="month-outstanding">
+          <div className="text-sm text-slate-500">Sisa Belum Dibayar</div>
+          <div className="font-heading text-xl font-extrabold tabular-nums text-red-600 mt-1">{loading ? "…" : rupiah(monthOutstanding)}</div>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
