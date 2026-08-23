@@ -168,6 +168,8 @@ async def create_bill_for_sale(sale_id: str, tanggal: str, items: list):
         "amount": amount,
         "items": breakdown,
         "status": "unpaid",
+        "paid_amount": 0,
+        "payments": [],
         "paid_at": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -191,6 +193,34 @@ class BillStatusInput(BaseModel):
     status: str
 
 
+class PaymentInput(BaseModel):
+    jumlah: float
+    tanggal: Optional[str] = None
+    note: Optional[str] = ""
+
+
+def _enrich_bill(b):
+    amount = b.get("amount", 0) or 0
+    payments = b.get("payments", []) or []
+    paid = sum(p.get("jumlah", 0) for p in payments)
+    if not payments and b.get("status") == "paid":
+        paid = amount
+    paid = round(min(paid, amount), 2) if amount else round(paid, 2)
+    outstanding = round(max(amount - paid, 0), 2)
+    if paid <= 0:
+        status = "unpaid"
+    elif amount > 0 and paid >= amount:
+        status = "paid"
+    else:
+        status = "partial"
+    b.pop("_id", None)
+    b["paid_amount"] = paid
+    b["outstanding"] = outstanding
+    b["status"] = status
+    b.setdefault("payments", payments)
+    return b
+
+
 class StoreInput(BaseModel):
     nama: str
 
@@ -210,27 +240,28 @@ class StoreSaldoInput(BaseModel):
 # ---------------- Supplier Bill routes ----------------
 @api_router.get("/supplier-bills")
 async def list_supplier_bills(status: Optional[str] = None, user: dict = Depends(get_current_user)):
-    query = {}
+    docs = await db.supplier_bills.find().sort("tanggal", -1).to_list(5000)
+    result = [_enrich_bill(d) for d in docs]
     if status:
-        query["status"] = status
-    docs = await db.supplier_bills.find(query).sort("tanggal", -1).to_list(5000)
-    for d in docs:
-        d.pop("_id", None)
-    return docs
+        result = [b for b in result if b["status"] == status]
+    return result
 
 
 @api_router.get("/supplier-bills/summary")
 async def supplier_bills_summary(user: dict = Depends(get_current_user)):
-    bills = await db.supplier_bills.find({}, {"amount": 1, "status": 1, "_id": 0}).to_list(10000)
-    unpaid_total = sum(b.get("amount", 0) for b in bills if b.get("status") == "unpaid")
-    paid_total = sum(b.get("amount", 0) for b in bills if b.get("status") == "paid")
-    unpaid_count = sum(1 for b in bills if b.get("status") == "unpaid")
-    paid_count = sum(1 for b in bills if b.get("status") == "paid")
+    docs = await db.supplier_bills.find().to_list(10000)
+    bills = [_enrich_bill(d) for d in docs]
+    outstanding_total = sum(b["outstanding"] for b in bills)
+    paid_total = sum(b["paid_amount"] for b in bills)
+    unpaid_count = sum(1 for b in bills if b["outstanding"] > 0)
+    paid_count = sum(1 for b in bills if b["status"] == "paid")
+    partial_count = sum(1 for b in bills if b["status"] == "partial")
     return {
-        "unpaid_total": round(unpaid_total, 2),
+        "unpaid_total": round(outstanding_total, 2),
         "paid_total": round(paid_total, 2),
         "unpaid_count": unpaid_count,
         "paid_count": paid_count,
+        "partial_count": partial_count,
     }
 
 
@@ -238,13 +269,72 @@ async def supplier_bills_summary(user: dict = Depends(get_current_user)):
 async def set_bill_status(bill_id: str, data: BillStatusInput, user: dict = Depends(get_current_user)):
     if data.status not in ("paid", "unpaid"):
         raise HTTPException(status_code=400, detail="Status tidak valid")
-    paid_at = datetime.now(timezone.utc).isoformat() if data.status == "paid" else None
-    res = await db.supplier_bills.update_one(
-        {"id": bill_id}, {"$set": {"status": data.status, "paid_at": paid_at}}
-    )
-    if res.matched_count == 0:
+    bill = await db.supplier_bills.find_one({"id": bill_id})
+    if not bill:
         raise HTTPException(status_code=404, detail="Tagihan tidak ditemukan")
+    amount = bill.get("amount", 0) or 0
+    if data.status == "paid":
+        payments = [{"id": str(uuid.uuid4()),
+                     "tanggal": datetime.now(timezone.utc).date().isoformat(),
+                     "jumlah": round(amount, 2), "note": "Pelunasan penuh"}]
+        upd = {"status": "paid", "paid_amount": round(amount, 2), "payments": payments,
+               "paid_at": datetime.now(timezone.utc).isoformat()}
+    else:
+        upd = {"status": "unpaid", "paid_amount": 0, "payments": [], "paid_at": None}
+    await db.supplier_bills.update_one({"id": bill_id}, {"$set": upd})
     return {"message": "Status tagihan diperbarui"}
+
+
+@api_router.post("/supplier-bills/{bill_id}/payment")
+async def add_bill_payment(bill_id: str, data: PaymentInput, user: dict = Depends(get_current_user)):
+    if data.jumlah <= 0:
+        raise HTTPException(status_code=400, detail="Nominal pembayaran harus lebih dari 0")
+    bill = await db.supplier_bills.find_one({"id": bill_id})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Tagihan tidak ditemukan")
+    amount = bill.get("amount", 0) or 0
+    payments = bill.get("payments", []) or []
+    prev_paid = sum(p.get("jumlah", 0) for p in payments)
+    if not payments and bill.get("status") == "paid":
+        prev_paid = amount
+    remaining = round(max(amount - prev_paid, 0), 2)
+    if remaining <= 0:
+        raise HTTPException(status_code=400, detail="Tagihan sudah lunas")
+    jumlah = round(min(data.jumlah, remaining), 2)
+    pay = {"id": str(uuid.uuid4()),
+           "tanggal": data.tanggal or datetime.now(timezone.utc).date().isoformat(),
+           "jumlah": jumlah, "note": data.note or ""}
+    payments.append(pay)
+    paid_amount = round(sum(p.get("jumlah", 0) for p in payments), 2)
+    status = "paid" if paid_amount >= amount else "partial"
+    paid_at = datetime.now(timezone.utc).isoformat() if status == "paid" else None
+    await db.supplier_bills.update_one(
+        {"id": bill_id},
+        {"$set": {"payments": payments, "paid_amount": paid_amount, "status": status, "paid_at": paid_at}},
+    )
+    return {"message": "Pembayaran dicatat", "paid_amount": paid_amount, "status": status}
+
+
+@api_router.delete("/supplier-bills/{bill_id}/payment/{pid}")
+async def delete_bill_payment(bill_id: str, pid: str, user: dict = Depends(get_current_user)):
+    bill = await db.supplier_bills.find_one({"id": bill_id})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Tagihan tidak ditemukan")
+    amount = bill.get("amount", 0) or 0
+    payments = [p for p in (bill.get("payments", []) or []) if p.get("id") != pid]
+    paid_amount = round(sum(p.get("jumlah", 0) for p in payments), 2)
+    if paid_amount <= 0:
+        status = "unpaid"
+    elif paid_amount >= amount:
+        status = "paid"
+    else:
+        status = "partial"
+    paid_at = datetime.now(timezone.utc).isoformat() if status == "paid" else None
+    await db.supplier_bills.update_one(
+        {"id": bill_id},
+        {"$set": {"payments": payments, "paid_amount": paid_amount, "status": status, "paid_at": paid_at}},
+    )
+    return {"message": "Pembayaran dihapus"}
 
 
 # ---------------- Store routes ----------------
@@ -303,10 +393,8 @@ async def _build_saldo_response(bulan: str):
     total_saldo_online = round(total_saldo_online, 2)
     withdrawals = doc.get("withdrawals", [])
     total_penarikan = round(sum(float(w.get("jumlah", 0) or 0) for w in withdrawals), 2)
-    bills = await db.supplier_bills.find(
-        {"status": "unpaid", "tanggal": {"$regex": f"^{bulan}"}}, {"amount": 1, "_id": 0}
-    ).to_list(10000)
-    invoice = round(sum(b.get("amount", 0) for b in bills), 2)
+    bills = await db.supplier_bills.find({"tanggal": {"$regex": f"^{bulan}"}}).to_list(10000)
+    invoice = round(sum(_enrich_bill(b)["outstanding"] for b in bills), 2)
     sisa_profit = round(total_saldo_online - invoice, 2)
     laba_bersih = round(total_saldo_online - invoice + total_penarikan, 2)
     return {
@@ -358,6 +446,64 @@ async def add_withdrawal(bulan: str, data: WithdrawalInput, user: dict = Depends
 async def delete_withdrawal(bulan: str, wid: str, user: dict = Depends(get_current_user)):
     await db.saldo_online.update_one({"bulan": bulan}, {"$pull": {"withdrawals": {"id": wid}}})
     return await _build_saldo_response(bulan)
+
+
+@api_router.get("/saldo-online/{bulan}/export")
+async def export_saldo(bulan: str, user: dict = Depends(get_current_user)):
+    resp = await _build_saldo_response(bulan)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Saldo Online"
+    title_font = Font(bold=True, size=13)
+    bold = Font(bold=True)
+
+    ws.append([f"Rekap Saldo Online - {bulan}"])
+    ws["A1"].font = title_font
+    ws.append([])
+    ws.append(["Nama Toko", "Saldo Tersedia", "Saldo Pending", "Total Saldo Per Toko"])
+    hr = ws.max_row
+    for col in range(1, 5):
+        c = ws.cell(row=hr, column=col)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(start_color="166534", end_color="166534", fill_type="solid")
+    for r in resp["stores"]:
+        ws.append([r["nama_toko"], r["saldo_tersedia"], r["saldo_pending"], r["total_per_toko"]])
+    ws.append(["TOTAL SALDO ONLINE", "", "", resp["total_saldo_online"]])
+    ws.cell(row=ws.max_row, column=1).font = bold
+    ws.cell(row=ws.max_row, column=4).font = bold
+    ws.append([])
+    ws.append(["Invoice Belum Dibayar", resp["invoice"]])
+    ws.cell(row=ws.max_row, column=1).font = bold
+    ws.append(["Sisa Profit", resp["sisa_profit"]])
+    ws.cell(row=ws.max_row, column=1).font = bold
+    ws.append([])
+    ws.append(["PENARIKAN PRIBADI"])
+    ws.cell(row=ws.max_row, column=1).font = bold
+    ws.append(["Tanggal", "Jumlah", "Sumber"])
+    hr2 = ws.max_row
+    for col in range(1, 4):
+        c = ws.cell(row=hr2, column=col)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(start_color="166534", end_color="166534", fill_type="solid")
+    for w in resp["withdrawals"]:
+        ws.append([w.get("tanggal", ""), w.get("jumlah", 0), w.get("sumber", "")])
+    ws.append(["Total Penarikan", resp["total_penarikan"]])
+    ws.cell(row=ws.max_row, column=1).font = bold
+    ws.append([])
+    ws.append(["LABA BERSIH BULAN INI", resp["laba_bersih"]])
+    ws.cell(row=ws.max_row, column=1).font = title_font
+    ws.cell(row=ws.max_row, column=2).font = title_font
+
+    for i, w in enumerate([28, 18, 18, 20], 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=saldo_online_{bulan}.xlsx"},
+    )
 
 
 

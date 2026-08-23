@@ -1,0 +1,31 @@
+{
+  "summary": "Tested 3 new capabilities: (1) Partial payment (cicilan) for supplier bills, (2) Excel export of Saldo Online per month, (3) Inventory stock filter (empty/negative/modal-negative). Wrote /app/backend/tests/test_partial_payment_and_export.py with 10 tests covering partial payment lifecycle (create/increment/delete-payment/pay-remaining/Batalkan/Lunas), summary.partial_count + outstanding-based unpaid_total, saldo invoice reduced by partial payments, and xlsx export. All 10 new tests + 16 existing new_features tests = 26/26 passing. Frontend Playwright: partial payment shows 'Dibayar Sebagian' badge, unpaid total decreases by paid amount (43,661,070 -> 43,660,070 after Rp 1.000 partial), Riwayat Pembayaran renders on expand, delete-payment recomputes to unpaid, saldo-online export downloads saldo_online_2026-08.xlsx, invoice matches Belum Dibayar total (Rp 43.661.070 for 2026-08), Inventory stock filter (Semua=284, Stock Kosong=133, Stock Minus=74, Modal/Fisik Minus=74) works and combines correctly with search.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SupplierBills (initial load)", "issues": ["On first render, unpaid-total flashes 'Rp 0' before bills finish fetching. Minor - resolves as soon as data arrives. Consider a skeleton/loading state to avoid the flash of empty totals."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_partial_payment_and_export.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_partial_export.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Backend _enrich_bill/_partial_reconcile logic is clean and idempotent; delete-payment correctly falls back to unpaid when paid_amount<=0. Nice.",
+    "GET /api/saldo-online/{bulan}/export requires auth (Bearer). Frontend uses fetch with token so download works; if you ever need direct-link downloads (e.g., anchor href), you'd need a signed-url variant.",
+    "Inventory stock filter is client-side over the products array (fine at 284 rows). If catalog grows past ~5k, move filtering server-side with query params.",
+    "server.py is 1169 lines; consider splitting into routers/ (supplier_bills, saldo, inventory, sales, auth) for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_partial_payment_and_export.py"],
+  "success_rate": {"backend": "100% (26/26 including 10 new)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin ramdanekanuryana20@gmail.com / admin123 (working)",
+  "seed_data_creation": "Tests create TEST_-prefixed products/sales/bills and clean them up in-fixture (module-scoped teardown + inline try/finally in TestSaldoInvoiceUsesOutstanding).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run backend tests SERIALLY with `-n 0` when tests share state across classes; pytest.ini uses xdist loadscope which splits by class and causes duplicate module fixtures. New testids verified: pay-partial-{id}, payment-dialog, payment-amount-input, submit-payment-button, delete-payment-{pid}, bill-status-{id} (badges: 'Belum Dibayar' / 'Dibayar Sebagian' / 'Lunas'), stock-filter-select, filter-count, export-saldo-button. Existing bills sit under bulan 2026-08 (invoice Rp 43.661.070). Frontend nav-supplier-bills=/supplier-bills, /saldo-online, /inventory.",
+  "rca of the issue": "N/A - no bugs found"
+}

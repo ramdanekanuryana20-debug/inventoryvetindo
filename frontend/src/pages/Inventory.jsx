@@ -14,6 +14,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, Download, Search, Package, Upload, FileSpreadsheet, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,13 +32,20 @@ export default function Inventory() {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [stockFilter, setStockFilter] = useState("all");
 
   const load = () => api.get("/products").then((res) => setProducts(res.data)).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const filtered = useMemo(
-    () => products.filter((p) => p.nama_produk.toLowerCase().includes(q.toLowerCase())),
-    [products, q]
+    () => products.filter((p) => {
+      if (!p.nama_produk.toLowerCase().includes(q.toLowerCase())) return false;
+      if (stockFilter === "empty") return (p.stock || 0) === 0;
+      if (stockFilter === "negative") return (p.stock || 0) < 0;
+      if (stockFilter === "modal_negative") return (p.modal_fisik || 0) < 0;
+      return true;
+    }),
+    [products, q, stockFilter]
   );
 
   const totalModal = useMemo(() => filtered.reduce((s, p) => s + (p.modal_fisik || 0), 0), [filtered]);
@@ -157,15 +165,31 @@ export default function Inventory() {
         </div>
       </div>
 
-      <div className="relative mb-4 max-w-sm">
-        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <Input
-          placeholder="Cari nama produk..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          data-testid="inventory-search-input"
-          className="pl-9"
-        />
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="relative max-w-sm flex-1 min-w-[200px]">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input
+            placeholder="Cari nama produk..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            data-testid="inventory-search-input"
+            className="pl-9"
+          />
+        </div>
+        <Select value={stockFilter} onValueChange={setStockFilter}>
+          <SelectTrigger className="w-56" data-testid="stock-filter-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-white">
+            <SelectItem value="all">Semua Produk</SelectItem>
+            <SelectItem value="empty">Stock Kosong (0)</SelectItem>
+            <SelectItem value="negative">Stock Minus (&lt; 0)</SelectItem>
+            <SelectItem value="modal_negative">Modal/Fisik Minus</SelectItem>
+          </SelectContent>
+        </Select>
+        {stockFilter !== "all" && (
+          <span className="text-sm text-slate-500" data-testid="filter-count">{filtered.length} produk cocok</span>
+        )}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">

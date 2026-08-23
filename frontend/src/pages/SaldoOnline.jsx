@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Save, Store, Wallet, History } from "lucide-react";
+import { Plus, Trash2, Save, Store, Wallet, History, Download } from "lucide-react";
 import { toast } from "sonner";
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -96,6 +96,18 @@ export default function SaldoOnline() {
     } catch { toast.error("Gagal menghapus"); }
   };
 
+  const exportSaldo = async () => {
+    try {
+      const res = await api.get(`/saldo-online/${bulan}/export`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `saldo_online_${bulan}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch { toast.error("Gagal export"); }
+  };
+
   let running = 0;
   const withdrawals = data?.withdrawals || [];
 
@@ -122,6 +134,9 @@ export default function SaldoOnline() {
               </Select>
             </div>
           )}
+          <Button variant="outline" onClick={exportSaldo} data-testid="export-saldo-button" className="h-9">
+            <Download className="h-4 w-4 mr-2" /> Export Excel
+          </Button>
         </div>
       </div>
 
