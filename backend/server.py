@@ -133,6 +133,235 @@ def enrich_product(p: dict) -> dict:
     return p
 
 
+# ---------------- Supplier Bill helpers ----------------
+async def _modal_per_qty(pid: str) -> float:
+    if not pid:
+        return 0.0
+    p = await db.products.find_one({"id": pid}, {"qty": 1, "harga_modal": 1, "_id": 0})
+    if not p:
+        return 0.0
+    q = p.get("qty") or 0
+    hm = p.get("harga_modal") or 0
+    return (hm / q) if q else 0.0
+
+
+async def _compute_bill(items: list):
+    total = 0.0
+    breakdown = []
+    for it in items:
+        pid = it.get("product_id")
+        qty = it.get("qty") or 0
+        nama = it.get("nama_barang", "")
+        mpq = await _modal_per_qty(pid)
+        subtotal = round(mpq * qty, 2)
+        total += subtotal
+        breakdown.append({"nama_barang": nama, "qty": qty, "modal_per_qty": round(mpq, 2), "subtotal": subtotal})
+    return round(total, 2), breakdown
+
+
+async def create_bill_for_sale(sale_id: str, tanggal: str, items: list):
+    amount, breakdown = await _compute_bill(items)
+    bill = {
+        "id": str(uuid.uuid4()),
+        "sale_id": sale_id,
+        "tanggal": tanggal,
+        "amount": amount,
+        "items": breakdown,
+        "status": "unpaid",
+        "paid_at": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.supplier_bills.insert_one(bill)
+
+
+async def update_bill_for_sale(sale_id: str, tanggal: str, items: list):
+    amount, breakdown = await _compute_bill(items)
+    existing = await db.supplier_bills.find_one({"sale_id": sale_id})
+    if existing:
+        await db.supplier_bills.update_one(
+            {"sale_id": sale_id},
+            {"$set": {"tanggal": tanggal, "amount": amount, "items": breakdown}},
+        )
+    else:
+        await create_bill_for_sale(sale_id, tanggal, items)
+
+
+# ---------------- Supplier Bill models ----------------
+class BillStatusInput(BaseModel):
+    status: str
+
+
+class StoreInput(BaseModel):
+    nama: str
+
+
+class WithdrawalInput(BaseModel):
+    tanggal: str
+    jumlah: float
+    sumber: Optional[str] = ""
+
+
+class StoreSaldoInput(BaseModel):
+    store_id: str
+    saldo_tersedia: float = 0
+    saldo_pending: float = 0
+
+
+# ---------------- Supplier Bill routes ----------------
+@api_router.get("/supplier-bills")
+async def list_supplier_bills(status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if status:
+        query["status"] = status
+    docs = await db.supplier_bills.find(query).sort("tanggal", -1).to_list(5000)
+    for d in docs:
+        d.pop("_id", None)
+    return docs
+
+
+@api_router.get("/supplier-bills/summary")
+async def supplier_bills_summary(user: dict = Depends(get_current_user)):
+    bills = await db.supplier_bills.find({}, {"amount": 1, "status": 1, "_id": 0}).to_list(10000)
+    unpaid_total = sum(b.get("amount", 0) for b in bills if b.get("status") == "unpaid")
+    paid_total = sum(b.get("amount", 0) for b in bills if b.get("status") == "paid")
+    unpaid_count = sum(1 for b in bills if b.get("status") == "unpaid")
+    paid_count = sum(1 for b in bills if b.get("status") == "paid")
+    return {
+        "unpaid_total": round(unpaid_total, 2),
+        "paid_total": round(paid_total, 2),
+        "unpaid_count": unpaid_count,
+        "paid_count": paid_count,
+    }
+
+
+@api_router.patch("/supplier-bills/{bill_id}/status")
+async def set_bill_status(bill_id: str, data: BillStatusInput, user: dict = Depends(get_current_user)):
+    if data.status not in ("paid", "unpaid"):
+        raise HTTPException(status_code=400, detail="Status tidak valid")
+    paid_at = datetime.now(timezone.utc).isoformat() if data.status == "paid" else None
+    res = await db.supplier_bills.update_one(
+        {"id": bill_id}, {"$set": {"status": data.status, "paid_at": paid_at}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Tagihan tidak ditemukan")
+    return {"message": "Status tagihan diperbarui"}
+
+
+# ---------------- Store routes ----------------
+@api_router.get("/stores")
+async def list_stores(user: dict = Depends(get_current_user)):
+    docs = await db.stores.find().sort("nama", 1).to_list(1000)
+    for d in docs:
+        d.pop("_id", None)
+    return docs
+
+
+@api_router.post("/stores")
+async def create_store(data: StoreInput, user: dict = Depends(get_current_user)):
+    store = {"id": str(uuid.uuid4()), "nama": data.nama.strip(),
+             "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.stores.insert_one(store)
+    store.pop("_id", None)
+    return store
+
+
+@api_router.delete("/stores/{store_id}")
+async def delete_store(store_id: str, user: dict = Depends(get_current_user)):
+    res = await db.stores.delete_one({"id": store_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+    return {"message": "Toko dihapus"}
+
+
+# ---------------- Saldo Online routes ----------------
+async def _saldo_doc(bulan: str):
+    doc = await db.saldo_online.find_one({"bulan": bulan})
+    if not doc:
+        doc = {"bulan": bulan, "store_saldo": {}, "withdrawals": []}
+    return doc
+
+
+async def _build_saldo_response(bulan: str):
+    doc = await _saldo_doc(bulan)
+    store_saldo = doc.get("store_saldo", {})
+    stores = await db.stores.find().sort("nama", 1).to_list(1000)
+    rows = []
+    total_saldo_online = 0.0
+    for s in stores:
+        sv = store_saldo.get(s["id"], {})
+        tersedia = float(sv.get("saldo_tersedia", 0) or 0)
+        pending = float(sv.get("saldo_pending", 0) or 0)
+        total_toko = round(tersedia + pending, 2)
+        total_saldo_online += total_toko
+        rows.append({
+            "store_id": s["id"],
+            "nama_toko": s["nama"],
+            "saldo_tersedia": tersedia,
+            "saldo_pending": pending,
+            "total_per_toko": total_toko,
+        })
+    total_saldo_online = round(total_saldo_online, 2)
+    withdrawals = doc.get("withdrawals", [])
+    total_penarikan = round(sum(float(w.get("jumlah", 0) or 0) for w in withdrawals), 2)
+    bills = await db.supplier_bills.find(
+        {"status": "unpaid", "tanggal": {"$regex": f"^{bulan}"}}, {"amount": 1, "_id": 0}
+    ).to_list(10000)
+    invoice = round(sum(b.get("amount", 0) for b in bills), 2)
+    sisa_profit = round(total_saldo_online - invoice, 2)
+    laba_bersih = round(total_saldo_online - invoice + total_penarikan, 2)
+    return {
+        "bulan": bulan,
+        "stores": rows,
+        "withdrawals": withdrawals,
+        "total_saldo_online": total_saldo_online,
+        "invoice": invoice,
+        "sisa_profit": sisa_profit,
+        "total_penarikan": total_penarikan,
+        "laba_bersih": laba_bersih,
+    }
+
+
+@api_router.get("/saldo-online/months")
+async def saldo_months(user: dict = Depends(get_current_user)):
+    months = await db.saldo_online.distinct("bulan")
+    return sorted(months, reverse=True)
+
+
+@api_router.get("/saldo-online")
+async def get_saldo(bulan: str, user: dict = Depends(get_current_user)):
+    return await _build_saldo_response(bulan)
+
+
+@api_router.put("/saldo-online/{bulan}/stores")
+async def save_saldo_stores(bulan: str, data: List[StoreSaldoInput], user: dict = Depends(get_current_user)):
+    store_saldo = {d.store_id: {"saldo_tersedia": d.saldo_tersedia, "saldo_pending": d.saldo_pending} for d in data}
+    await db.saldo_online.update_one(
+        {"bulan": bulan},
+        {"$set": {"store_saldo": store_saldo}, "$setOnInsert": {"withdrawals": []}},
+        upsert=True,
+    )
+    return await _build_saldo_response(bulan)
+
+
+@api_router.post("/saldo-online/{bulan}/withdrawals")
+async def add_withdrawal(bulan: str, data: WithdrawalInput, user: dict = Depends(get_current_user)):
+    w = {"id": str(uuid.uuid4()), "tanggal": data.tanggal, "jumlah": data.jumlah, "sumber": data.sumber or ""}
+    await db.saldo_online.update_one(
+        {"bulan": bulan},
+        {"$push": {"withdrawals": w}, "$setOnInsert": {"store_saldo": {}}},
+        upsert=True,
+    )
+    return await _build_saldo_response(bulan)
+
+
+@api_router.delete("/saldo-online/{bulan}/withdrawals/{wid}")
+async def delete_withdrawal(bulan: str, wid: str, user: dict = Depends(get_current_user)):
+    await db.saldo_online.update_one({"bulan": bulan}, {"$pull": {"withdrawals": {"id": wid}}})
+    return await _build_saldo_response(bulan)
+
+
+
+
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/login")
 async def login(data: LoginInput, response: Response):
@@ -418,6 +647,7 @@ async def import_sales(file: UploadFile = File(...), user: dict = Depends(get_cu
         for it in items:
             if it.get("product_id"):
                 await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -abs(it["qty"])}})
+        await create_bill_for_sale(sale["id"], tgl, items)
 
     return {
         "transactions_created": transactions_created,
@@ -463,6 +693,7 @@ async def create_sale(data: SaleInput, user: dict = Depends(get_current_user)):
                 {"id": item.product_id},
                 {"$inc": {"stock": -abs(item.qty)}}
             )
+    await create_bill_for_sale(sale.id, data.tanggal, [i.model_dump() for i in data.items])
     doc = sale.model_dump()
     doc.pop("_id", None)
     return doc
@@ -499,6 +730,7 @@ async def update_sale(sale_id: str, data: SaleInput, user: dict = Depends(get_cu
         "catatan": data.catatan or "",
     }
     await db.sales.update_one({"id": sale_id}, {"$set": update_doc})
+    await update_bill_for_sale(sale_id, data.tanggal, [i.model_dump() for i in data.items])
     doc = await db.sales.find_one({"id": sale_id})
     doc.pop("_id", None)
     return doc
@@ -516,6 +748,7 @@ async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
                 {"$inc": {"stock": abs(item.get("qty", 0))}}
             )
     await db.sales.delete_one({"id": sale_id})
+    await db.supplier_bills.delete_many({"sale_id": sale_id})
     return {"message": "Transaksi dihapus, stock dikembalikan"}
 
 
@@ -757,6 +990,17 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await db.products.create_index("id", unique=True)
     await db.sales.create_index("id", unique=True)
+    await db.supplier_bills.create_index("sale_id")
+    await db.supplier_bills.create_index("id")
+    await db.stores.create_index("id")
+    await db.saldo_online.create_index("bulan", unique=True)
+    # backfill supplier bills for sales without one
+    existing_bill_sales = set()
+    async for b in db.supplier_bills.find({}, {"sale_id": 1, "_id": 0}):
+        existing_bill_sales.add(b.get("sale_id"))
+    async for s in db.sales.find({}):
+        if s["id"] not in existing_bill_sales:
+            await create_bill_for_sale(s["id"], s.get("tanggal", ""), s.get("items", []))
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     existing = await db.users.find_one({"email": admin_email})

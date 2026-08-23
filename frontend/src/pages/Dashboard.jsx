@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { rupiah, num } from "@/lib/format";
-import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy, ChevronRight } from "lucide-react";
+import { Package, Wallet, ShoppingCart, TrendingUp, AlertTriangle, CalendarDays, Trophy, ChevronRight, Receipt } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
@@ -36,12 +36,14 @@ export default function Dashboard() {
   const [topProducts, setTopProducts] = useState([]);
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [emptyProducts, setEmptyProducts] = useState([]);
+  const [supplier, setSupplier] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/dashboard/stats").then((res) => setStats(res.data)).catch(() => {});
     api.get("/dashboard/monthly-sales").then((res) => setMonthly(res.data)).catch(() => {});
     api.get("/dashboard/top-products").then((res) => setTopProducts(res.data)).catch(() => {});
+    api.get("/supplier-bills/summary").then((res) => setSupplier(res.data)).catch(() => {});
   }, []);
 
   const openEmptyStock = () => {
@@ -71,6 +73,10 @@ export default function Dashboard() {
           value={stats ? stats.total_transactions : "—"} sub="Total transaksi tercatat" />
         <StatCard testid="stat-today-sales" icon={CalendarDays} label="Penjualan Hari Ini" accent="bg-teal-100 text-teal-700"
           value={stats ? rupiah(stats.today_sales) : "—"} sub="Transaksi hari ini" />
+        <StatCard testid="stat-supplier-unpaid" icon={Receipt} label="Tagihan Belum Dibayar" accent="bg-red-100 text-red-700"
+          value={supplier ? rupiah(supplier.unpaid_total) : "—"}
+          sub={supplier ? `${supplier.unpaid_count} tagihan ke supplier` : "Klik untuk lihat"}
+          onClick={() => navigate("/supplier-bills")} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">

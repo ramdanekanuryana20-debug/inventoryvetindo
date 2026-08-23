@@ -1,0 +1,23 @@
+{
+  "summary": "Tested new Supplier Bills + Saldo Online features (backend + frontend). Wrote /app/backend/tests/test_new_features.py (16 tests, 100% pass) covering: sale->bill auto-create, update sale->update bill, delete sale->delete bill, bill status toggle & invalid status 400, /supplier-bills/summary, stores CRUD, saldo save with store totals & invoice/sisa_profit, withdrawals add/delete with laba_bersih math, /saldo-online/months. Frontend flow via Playwright: login -> Dashboard stat-supplier-unpaid card (Rp 10.715.355) clicks through to /supplier-bills; Belum Dibayar & Sudah Dibayar totals accurate; pay/unpay toggle reflows totals correctly. Saldo Online: month input works, add/delete store, saldo tersedia+pending sum to Total Saldo Online, invoice=0 for Jan 2026 (existing bills are Aug 2026), Sisa Profit and Laba Bersih math verified (600k - 0 + 25k = 625k), withdrawal add/delete works, history select present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_new_features.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Sale items with product_id=None contribute 0 to supplier bill (expected). Confirm this is desired behavior; if a manual sale should still create supplier bill from an assumed modal, add manual modal input.",
+    "PUT /api/saldo-online/{bulan}/stores overwrites the entire store_saldo map with the payload; if the payload omits a store, its previously-saved saldo is lost. Currently the UI always sends all rows so it works, but backend could merge instead of replace for safety.",
+    "startup() backfill loops all sales without a bill on every restart - fine for now, but could be expensive at scale."
+  ],
+  "updated_files": ["/app/backend/tests/test_new_features.py"],
+  "success_rate": {"backend": "100% (16/16 new + 13/13 existing)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin: ramdanekanuryana20@gmail.com / admin123 (working)",
+  "seed_data_creation": "All test data prefixed TEST_/TESTUI_ and cleaned up in-test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Existing 4 sales are in Aug 2026 so supplier-bills totals live under bulan=2026-08. For Saldo Online invoice you must select 2026-08 to see non-zero invoice. Datatestids verified: stat-supplier-unpaid, unpaid-total, paid-total, pay-bill-{id}, unpay-bill-{id}, nav-saldo-online, saldo-month-input, new-store-input, add-store-button, saldo-tersedia-{id}, saldo-pending-{id}, save-saldo-button, total-saldo-online, saldo-invoice, saldo-sisa-profit, wd-jumlah-input, wd-sumber-input, add-withdrawal-button, total-penarikan, summary-laba-bersih, delete-withdrawal-{id}, delete-store-{id}, saldo-history-select."
+}

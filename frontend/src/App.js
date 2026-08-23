@@ -7,6 +7,8 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Inventory from "@/pages/Inventory";
 import Sales from "@/pages/Sales";
+import SupplierBills from "@/pages/SupplierBills";
+import SaldoOnline from "@/pages/SaldoOnline";
 import { Toaster } from "@/components/ui/sonner";
 
 function App() {
@@ -37,6 +39,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Layout><Sales /></Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/supplier-bills"
+              element={
+                <ProtectedRoute>
+                  <Layout><SupplierBills /></Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/saldo-online"
+              element={
+                <ProtectedRoute>
+                  <Layout><SaldoOnline /></Layout>
                 </ProtectedRoute>
               }
             />

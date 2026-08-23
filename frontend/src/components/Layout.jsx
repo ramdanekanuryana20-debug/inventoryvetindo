@@ -1,12 +1,14 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
   { to: "/inventory", label: "Stock Barang", icon: Package, testid: "nav-inventory" },
   { to: "/sales", label: "Penjualan", icon: ShoppingCart, testid: "nav-sales" },
+  { to: "/supplier-bills", label: "Tagihan Supplier", icon: Receipt, testid: "nav-supplier-bills" },
+  { to: "/saldo-online", label: "Saldo Online", icon: Wallet, testid: "nav-saldo-online" },
 ];
 
 export default function Layout({ children }) {
