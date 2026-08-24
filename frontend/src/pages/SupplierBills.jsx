@@ -70,7 +70,7 @@ function BillCard({ bill, onToggle, onOpenPay, onDeletePayment, expanded, onExpa
                 <tr>
                   <th className="px-4 py-2 font-semibold">Nama Barang</th>
                   <th className="px-4 py-2 font-semibold text-right">QTY</th>
-                  <th className="px-4 py-2 font-semibold text-right">Modal/QTY</th>
+                  <th className="px-4 py-2 font-semibold text-right">Harga/QTY</th>
                   <th className="px-4 py-2 font-semibold text-right">Subtotal</th>
                 </tr>
               </thead>

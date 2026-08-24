@@ -1,0 +1,8 @@
+crons:
+  - name: reconcile-bills
+    description: "Menyamakan nominal tagihan supplier Belum Dibayar dengan Grand Total penjualan tiap jam"
+    cron: "0 * * * *"
+    endpoint: "{{BASE_URL}}/api/cron/reconcile-bills"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

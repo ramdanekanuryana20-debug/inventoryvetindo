@@ -5,7 +5,7 @@ import os
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -18,6 +18,7 @@ import io
 import logging
 import bcrypt
 import jwt
+import hmac
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from reportlab.lib.pagesizes import A5
@@ -592,6 +593,76 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     return {"message": "Produk dihapus"}
+
+
+class StockAddInput(BaseModel):
+    jumlah: float
+
+
+class ModalAdjustInput(BaseModel):
+    arah: str  # "naik" atau "turun"
+    nominal: float
+
+
+@api_router.post("/products/{product_id}/add-stock")
+async def add_stock(product_id: str, data: StockAddInput, user: dict = Depends(get_current_user)):
+    doc = await db.products.find_one({"id": product_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    new_stock = (doc.get("stock") or 0) + data.jumlah
+    await db.products.update_one({"id": product_id}, {"$set": {"stock": new_stock}})
+    doc = await db.products.find_one({"id": product_id})
+    return enrich_product(doc)
+
+
+@api_router.post("/products/{product_id}/adjust-modal")
+async def adjust_modal(product_id: str, data: ModalAdjustInput, user: dict = Depends(get_current_user)):
+    if data.arah not in ("naik", "turun"):
+        raise HTTPException(status_code=400, detail="Arah harus 'naik' atau 'turun'")
+    if data.nominal < 0:
+        raise HTTPException(status_code=400, detail="Nominal tidak boleh negatif")
+    doc = await db.products.find_one({"id": product_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    cur = doc.get("harga_modal") or 0
+    new_modal = cur + data.nominal if data.arah == "naik" else cur - data.nominal
+    if new_modal < 0:
+        new_modal = 0
+    await db.products.update_one({"id": product_id}, {"$set": {"harga_modal": new_modal}})
+    doc = await db.products.find_one({"id": product_id})
+    return enrich_product(doc)
+
+
+async def reconcile_unpaid_bills():
+    sales = {}
+    async for s in db.sales.find({}):
+        sales[s["id"]] = s
+    fixed = 0
+    async for b in db.supplier_bills.find({}):
+        paid = sum(p.get("jumlah", 0) for p in (b.get("payments", []) or []))
+        if paid > 0 or b.get("status") == "paid":
+            continue
+        s = sales.get(b.get("sale_id"))
+        if not s:
+            continue
+        amount, breakdown = await _compute_bill(s.get("items", []))
+        if abs(amount - (b.get("amount", 0) or 0)) > 0.001:
+            await db.supplier_bills.update_one({"id": b["id"]}, {"$set": {"amount": amount, "items": breakdown}})
+            fixed += 1
+    logger.info("Rekonsiliasi tagihan: %s diperbarui", fixed)
+    return fixed
+
+
+@api_router.post("/cron/reconcile-bills")
+async def cron_reconcile_bills(request: Request, background: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    if not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background.add_task(reconcile_unpaid_bills)
+    return {"status": "accepted"}
 
 
 def _to_num(v):

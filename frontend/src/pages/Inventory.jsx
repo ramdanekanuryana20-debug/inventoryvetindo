@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Download, Search, Package, Upload, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Search, Package, Upload, FileSpreadsheet, Loader2, PackagePlus, Coins, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 
 const empty = { nama_produk: "", qty: 1, harga_modal: 0, stock: 0, keterangan: "" };
@@ -33,6 +33,11 @@ export default function Inventory() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [stockFilter, setStockFilter] = useState("all");
+  const [stockDlg, setStockDlg] = useState(null);
+  const [stockAdd, setStockAdd] = useState("");
+  const [modalDlg, setModalDlg] = useState(null);
+  const [modalArah, setModalArah] = useState("naik");
+  const [modalNominal, setModalNominal] = useState("");
 
   const load = () => api.get("/products").then((res) => setProducts(res.data)).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -143,6 +148,31 @@ export default function Inventory() {
     }
   };
 
+  const openStockDlg = (p) => { setStockDlg(p); setStockAdd(""); };
+  const openModalDlg = (p) => { setModalDlg(p); setModalArah("naik"); setModalNominal(""); };
+
+  const submitStock = async () => {
+    const jumlah = Number(stockAdd);
+    if (Number.isNaN(jumlah) || stockAdd === "") { toast.error("Isi jumlah barang datang"); return; }
+    try {
+      await api.post(`/products/${stockDlg.id}/add-stock`, { jumlah });
+      toast.success("Stock diperbarui");
+      setStockDlg(null);
+      load();
+    } catch { toast.error("Gagal update stock"); }
+  };
+
+  const submitModal = async () => {
+    const nominal = Number(modalNominal);
+    if (!nominal || nominal <= 0) { toast.error("Isi nominal selisih"); return; }
+    try {
+      await api.post(`/products/${modalDlg.id}/adjust-modal`, { arah: modalArah, nominal });
+      toast.success("Harga modal diperbarui");
+      setModalDlg(null);
+      load();
+    } catch { toast.error("Gagal update modal"); }
+  };
+
   const modalPerQty = (Number(form.harga_modal) || 0) / (Number(form.qty) || 1);
 
   return (
@@ -227,6 +257,14 @@ export default function Inventory() {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex justify-end gap-1">
+                      <button onClick={() => openStockDlg(p)} data-testid={`update-stock-${p.id}`}
+                        className="p-1.5 rounded hover:bg-blue-100 text-blue-600 transition-colors" title="Update Stock">
+                        <PackagePlus className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => openModalDlg(p)} data-testid={`update-modal-${p.id}`}
+                        className="p-1.5 rounded hover:bg-emerald-100 text-emerald-600 transition-colors" title="Update Modal">
+                        <Coins className="h-4 w-4" />
+                      </button>
                       <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`}
                         className="p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors">
                         <Pencil className="h-4 w-4" />
@@ -319,6 +357,68 @@ export default function Inventory() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!stockDlg} onOpenChange={(o) => !o && setStockDlg(null)}>
+        <DialogContent className="bg-white max-w-sm" data-testid="update-stock-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2"><PackagePlus className="h-5 w-5 text-blue-600" /> Update Stock</DialogTitle>
+            <DialogDescription>Masukkan jumlah barang yang baru datang. Otomatis ditambahkan ke stok saat ini (termasuk jika minus).</DialogDescription>
+          </DialogHeader>
+          {stockDlg && (
+            <div className="space-y-3">
+              <div className="text-sm text-slate-600">{stockDlg.nama_produk}</div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-slate-50 rounded-md p-2"><div className="text-slate-400 text-xs">Stok Saat Ini</div><div className="font-semibold tabular-nums">{num(stockDlg.stock)}</div></div>
+                <div className="bg-slate-50 rounded-md p-2"><div className="text-slate-400 text-xs">Hasil Akhir</div><div className="font-semibold tabular-nums text-blue-700" data-testid="stock-result">{num((Number(stockDlg.stock) || 0) + (Number(stockAdd) || 0))}</div></div>
+              </div>
+              <div>
+                <Label>Jumlah Barang Datang</Label>
+                <Input type="number" step="any" value={stockAdd} onChange={(e) => setStockAdd(e.target.value)} data-testid="stock-add-input" className="mt-1.5" autoFocus />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStockDlg(null)}>Batal</Button>
+            <Button onClick={submitStock} data-testid="submit-stock-update">Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!modalDlg} onOpenChange={(o) => !o && setModalDlg(null)}>
+        <DialogContent className="bg-white max-w-sm" data-testid="update-modal-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2"><Coins className="h-5 w-5 text-emerald-600" /> Update Harga Modal</DialogTitle>
+            <DialogDescription>Pilih naik atau turun, lalu masukkan nominal selisihnya.</DialogDescription>
+          </DialogHeader>
+          {modalDlg && (
+            <div className="space-y-3">
+              <div className="text-sm text-slate-600">{modalDlg.nama_produk}</div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-slate-50 rounded-md p-2"><div className="text-slate-400 text-xs">Modal Saat Ini</div><div className="font-semibold tabular-nums">{rupiah(modalDlg.harga_modal)}</div></div>
+                <div className="bg-slate-50 rounded-md p-2"><div className="text-slate-400 text-xs">Hasil Akhir</div><div className="font-semibold tabular-nums text-emerald-700" data-testid="modal-result">{rupiah(Math.max((Number(modalDlg.harga_modal) || 0) + (modalArah === "naik" ? 1 : -1) * (Number(modalNominal) || 0), 0))}</div></div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setModalArah("naik")} data-testid="modal-arah-naik"
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-sm font-medium border ${modalArah === "naik" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-200"}`}>
+                  <ArrowUp className="h-4 w-4" /> Naik
+                </button>
+                <button onClick={() => setModalArah("turun")} data-testid="modal-arah-turun"
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-sm font-medium border ${modalArah === "turun" ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-600 border-slate-200"}`}>
+                  <ArrowDown className="h-4 w-4" /> Turun
+                </button>
+              </div>
+              <div>
+                <Label>Nominal Selisih</Label>
+                <Input type="number" step="any" value={modalNominal} onChange={(e) => setModalNominal(e.target.value)} data-testid="modal-nominal-input" className="mt-1.5" autoFocus />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalDlg(null)}>Batal</Button>
+            <Button onClick={submitModal} data-testid="submit-modal-update">Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="bg-white max-w-lg" data-testid="import-dialog">

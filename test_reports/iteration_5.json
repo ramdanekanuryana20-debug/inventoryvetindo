@@ -1,0 +1,28 @@
+{
+  "summary": "Verified new features: (A) Update Stock and Update Modal per-product actions on Stock Barang, (B) SupplierBills detail column now labeled 'Harga/QTY', (C) hourly cron endpoint POST /api/cron/reconcile-bills with Bearer WEBHOOK_CRON_SECRET auth. Added /app/backend/tests/test_stock_modal_cron.py (11 tests). Full backend regression: 55/55 tests pass. Frontend Playwright: login as admin, opened update-stock-<id> dialog (stock-result preview 50+5=55 correct), opened update-modal-<id> dialog (naik 90000+12345=Rp 102.345, turun 90000-12345=Rp 77.655 clamped preview correct), Tagihan Supplier expanded row shows header 'Harga/QTY' with no 'Modal/QTY' string remaining anywhere in the visible bill detail. Cron endpoint: no-auth->401, wrong secret->401, valid Bearer secret->2xx {'status':'accepted'}, and background task successfully reconciles all UNPAID bills to their sale.grand_total while leaving paid/partial bills untouched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_stock_modal_cron.py",
+    "/app/test_reports/pytest/pytest_iter5.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "add_stock correctly adds to current stock even when negative (verified -10 + 60 = 50).",
+    "adjust_modal correctly clamps at 0 on turun overflow, validates arah and non-negative nominal (400 on bad input).",
+    "cron_reconcile_bills uses hmac.compare_digest for secret comparison (timing-safe) and enqueues work to BackgroundTasks so it acks 2xx immediately - good pattern for cron webhooks.",
+    "reconcile_unpaid_bills skips any bill with payments>0 OR status=='paid' - matches update_bill_for_sale freeze rule; paid bill amount preserved after cron run (verified).",
+    "Non-blocking: server.py still 1300+ lines - consider splitting into routers/ (repeat suggestion from iter 4).",
+    "Non-blocking: inventory xlsx export header at line 1207 still uses 'Modal/QTY' - if the rename intent extended to exports, this may need update; scope of this iteration was only SupplierBills detail so leaving as-is."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stock_modal_cron.py (new)"
+  ],
+  "success_rate": {"backend": "100% (55/55)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin ramdanekanuryana20@gmail.com / admin123 (working); WEBHOOK_CRON_SECRET from /app/backend/.env verified.",
+  "seed_data_creation": "All tests create TEST_-prefixed products/sales and clean up in-place (delete sale + product). UI smoke test did NOT save any mutations - both Update Stock and Update Modal dialogs opened on a real product but were cancelled via 'Batal' before saving. No leftover TEST_ data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Cron endpoint returns 200 (not 202) with body {'status':'accepted'} and background task; wait ~2s after posting before asserting bill amounts. Bill freeze rule: bill.amount is only recomputed by reconcile job when payments==0 AND status!='paid'. All backend tests live at /app/backend/tests/; run with REACT_APP_BACKEND_URL env set. Frontend testids for new features: update-stock-{id}, stock-add-input, stock-result, submit-stock-update, update-stock-dialog, update-modal-{id}, modal-arah-naik, modal-arah-turun, modal-nominal-input, modal-result, submit-modal-update, update-modal-dialog.",
+  "rca of the issue": "N/A - new-feature verification, no bugs found."
+}
