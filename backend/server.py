@@ -151,16 +151,20 @@ async def _modal_per_qty(pid: str) -> float:
 
 
 async def _compute_bill(items: list):
+    # Nominal tagihan supplier = total baris penjualan (harga x qty) agar selalu = Grand Total,
+    # menghindari selisih pembulatan dari perhitungan ulang modal_per_qty.
     total = 0.0
     breakdown = []
     for it in items:
-        pid = it.get("product_id")
         qty = it.get("qty") or 0
         nama = it.get("nama_barang", "")
-        mpq = await _modal_per_qty(pid)
-        subtotal = round(mpq * qty, 2)
+        harga = it.get("harga", 0) or 0
+        subtotal = it.get("total")
+        if subtotal is None:
+            subtotal = qty * harga
+        subtotal = round(subtotal, 2)
         total += subtotal
-        breakdown.append({"nama_barang": nama, "qty": qty, "modal_per_qty": round(mpq, 2), "subtotal": subtotal})
+        breakdown.append({"nama_barang": nama, "qty": qty, "modal_per_qty": round(harga, 2), "subtotal": subtotal})
     return round(total, 2), breakdown
 
 

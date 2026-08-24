@@ -47,7 +47,8 @@ class TestSupplierBillsFromSales:
         sale = r.json()
         TestSupplierBillsFromSales.sale_id = sale["id"]
 
-        expected = round(3026.4 * 4, 2)  # only product-linked items contribute
+        # Bill amount == sale grand_total (sum of qty*harga for ALL line items)
+        expected = round(4 * 5000 + 3 * 1000, 2)
         TestSupplierBillsFromSales.expected_amount = expected
 
         # GET supplier-bills and locate this bill
@@ -75,7 +76,7 @@ class TestSupplierBillsFromSales:
         bills = client.get(f"{BASE_URL}/api/supplier-bills").json()
         bill = next((b for b in bills if b.get("sale_id") == TestSupplierBillsFromSales.sale_id), None)
         assert bill is not None
-        assert bill["amount"] == round(3026.4 * 10, 2)
+        assert bill["amount"] == round(10 * 5000, 2)
         assert bill["tanggal"] == "2026-01-12"
 
     def test_toggle_bill_status(self, client):
@@ -157,10 +158,10 @@ class TestSaldoOnline:
         sale = client.post(f"{BASE_URL}/api/sales", json={
             "tanggal": f"{TestSaldoOnline.bulan}-05",
             "items": [{"product_id": p["id"], "nama_barang": "TEST_SALDOPROD",
-                       "qty": 2, "harga": 15000, "total": 0}],
+                       "qty": 2, "harga": 10000, "total": 0}],
         }).json()
         TestSaldoOnline.sale_id = sale["id"]
-        # bill amount = 10000 * 2 = 20000
+        # bill amount == grand_total = 2*10000 = 20000
         # ensure unpaid
         bills = client.get(f"{BASE_URL}/api/supplier-bills").json()
         bill = next(b for b in bills if b["sale_id"] == sale["id"])

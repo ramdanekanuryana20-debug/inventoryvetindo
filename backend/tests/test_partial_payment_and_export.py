@@ -22,17 +22,17 @@ def client():
 
 @pytest.fixture(scope="module")
 def seeded(client):
-    """Create a product + sale that yields a supplier bill of Rp 200_000."""
+    """Create a product + sale that yields a supplier bill of Rp 200_000 (qty*harga)."""
     p = client.post(f"{BASE_URL}/api/products",
                     json={"nama_produk": "TEST_PAYPROD", "qty": 10, "harga_modal": 1000000,
                           "stock": 50, "keterangan": ""}).json()
     prod_id = p["id"]
-    # modal_per_qty = 1_000_000 / 10 = 100_000 ; qty 2 -> bill 200_000
+    # bill amount = sale grand_total = qty * harga = 2 * 100000 = 200_000
     bulan = "2026-04"
     sale = client.post(f"{BASE_URL}/api/sales", json={
         "tanggal": f"{bulan}-05",
         "items": [{"product_id": prod_id, "nama_barang": "TEST_PAYPROD",
-                   "qty": 2, "harga": 15000, "total": 0}],
+                   "qty": 2, "harga": 100000, "total": 0}],
         "catatan": "TEST_PARTIAL",
     }).json()
     sale_id = sale["id"]
@@ -149,7 +149,7 @@ class TestSaldoInvoiceUsesOutstanding:
         sale = client.post(f"{BASE_URL}/api/sales", json={
             "tanggal": f"{bulan}-05",
             "items": [{"product_id": prod_id, "nama_barang": "TEST_INVPROD",
-                       "qty": 2, "harga": 15000, "total": 0}],
+                       "qty": 2, "harga": 50000, "total": 0}],
         }).json()
         sale_id = sale["id"]
         try:
@@ -158,7 +158,7 @@ class TestSaldoInvoiceUsesOutstanding:
 
             d0 = client.get(f"{BASE_URL}/api/saldo-online", params={"bulan": bulan}).json()
             base_invoice = d0["invoice"]
-            assert base_invoice >= 100000  # 500000/10 * 2 = 100000
+            assert base_invoice >= 100000  # qty*harga = 2*50000 = 100000
 
             # partial 40000 -> invoice reduces by 40000
             client.post(f"{BASE_URL}/api/supplier-bills/{bill_id}/payment",

@@ -1,0 +1,31 @@
+{
+  "summary": "Verified the bug fix: supplier bill amount now always equals the linked sale's grand_total for UNPAID bills, with paid/partial bills preserving their original amount on sale edits. Wrote /app/backend/tests/test_bill_amount_equals_grand_total.py (5 tests) covering: (1) all existing UNPAID bills bill.amount == sale.grand_total across the DB (13 unpaid checked in 2026-08, 0 mismatches, incl. the reported 19-Aug bill = Rp 4.756.857), (2) new sale with odd fractional prices produces bill == grand_total with no rounding drift, (3) editing an UNPAID sale updates the linked bill to new grand_total (+tanggal sync), (4) partial-paid bill amount stays FROZEN when sale is edited, (5) fully-paid bill amount stays FROZEN when sale is edited. Also updated 2 existing test files whose expected amounts were built on the OLD modal_per_qty*qty formula so they align with the new grand_total-based bill logic (test_new_features.py, test_partial_payment_and_export.py). Regression: partial payment lifecycle (unpaid->partial->paid, Batalkan, Lunas, delete-payment recompute), summary outstanding totals, saldo invoice from outstanding, and xlsx export ALL still pass. Frontend Playwright: /supplier-bills for 2026-08 renders correctly: month-total Rp 66.278.986 = month-paid Rp 22.617.897 + month-outstanding Rp 43.661.089; visible 19 Aug bill-amount shows Rp 4.756.857 matching API grand_total. Cross-check via UI-driven fetch confirmed 0 mismatches across all 13 unpaid bills in 2026-08. Backend 44/44 pytest passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_bill_amount_equals_grand_total.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/test_partial_payment_and_export.py",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_compute_bill correctly uses item['total'] when present and falls back to qty*harga, so it aligns with sale grand_total (which is set from item.qty*item.harga in create_sale/update_sale). No drift observed.",
+    "update_bill_for_sale correctly guards the freeze on paid/partial (payments>0 or status=='paid'); tanggal-only sync is the right compromise so month filter still reflects the sale date.",
+    "One-time backfill successfully corrected 12 existing UNPAID bills; recommend also documenting a periodic reconciler cron in case any future code path bypasses create_bill_for_sale.",
+    "Minor: _compute_bill still populates modal_per_qty in breakdown from harga (line unit price), but the field is named 'modal_per_qty' - naming is a bit misleading now that we removed the modal-based recomputation. Consider renaming to 'harga_per_qty' in the bill items breakdown for clarity (non-blocking).",
+    "server.py is 1241 lines - continue previous suggestion to split into routers/."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bill_amount_equals_grand_total.py (new)",
+    "/app/backend/tests/test_new_features.py (updated 3 expected amounts to grand_total-based)",
+    "/app/backend/tests/test_partial_payment_and_export.py (updated seeded fixture harga so bill=200000 under new formula; updated invoice test harga)"
+  ],
+  "success_rate": {"backend": "100% (44/44)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin ramdanekanuryana20@gmail.com / admin123 (working)",
+  "seed_data_creation": "All new tests create TEST_-prefixed products/sales/bills and clean them up in try/finally or fixture teardown. No residual test data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bill amount is now defined as sum(item.total)=sum(qty*harga)=sale.grand_total. When writing tests, do NOT expect modal_per_qty*qty. Bill amount FREEZES the moment a payment is added or status flips to paid; tanggal continues to sync on sale edit. Existing bills in DB are under bulan 2026-08; 19-Aug bill amount = 4,756,857 = its sale grand_total.",
+  "rca of the issue": "RCA: Previous _compute_bill recomputed modal_per_qty = product.harga_modal / product.qty (initial pack), then rounded per-line before summing. For a 26-item sale with many small unit modals, per-line rounding accumulated a Rp 6.007 drift vs. the sale's own grand_total (which sums qty*harga once and rounds). Fix: _compute_bill now sums item['total'] directly (falling back to qty*harga), aligning perfectly with sale.grand_total. update_bill_for_sale only recomputes if bill has no payments and is not paid, protecting historical paid/partial bills. Reproduction: create sale with odd fractional harga (e.g., 12345.67 x 3 + 999.99 x 5) and verify bill.amount == sale.grand_total (covered by test_odd_prices_bill_equals_grand_total_no_drift)."
+}
