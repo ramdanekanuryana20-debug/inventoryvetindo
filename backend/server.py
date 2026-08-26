@@ -773,6 +773,35 @@ async def import_products(file: UploadFile = File(...), user: dict = Depends(get
 
 
 
+@api_router.get("/sales/product-report")
+async def product_report(q: str = "", start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if start or end:
+        cond = {}
+        if start:
+            cond["$gte"] = start
+        if end:
+            cond["$lte"] = end + "\uffff"
+        query["tanggal"] = cond
+    docs = await db.sales.find(query).sort("tanggal", -1).to_list(10000)
+    ql = (q or "").strip().lower()
+    transactions = []
+    total_qty = 0.0
+    total_nominal = 0.0
+    if ql:
+        for s in docs:
+            matched = [it for it in s.get("items", []) if ql in str(it.get("nama_barang", "")).lower()]
+            if not matched:
+                continue
+            sub = 0.0
+            for it in matched:
+                total_qty += it.get("qty", 0) or 0
+                total_nominal += it.get("total", 0) or 0
+                sub += it.get("total", 0) or 0
+            transactions.append({"sale_id": s.get("id"), "tanggal": s.get("tanggal"), "items": matched, "subtotal": round(sub, 2)})
+    return {"transactions": transactions, "total_qty": round(total_qty, 2), "total_nominal": round(total_nominal, 2), "count": len(transactions)}
+
+
 @api_router.get("/sales/template")
 async def sales_template(user: dict = Depends(get_current_user)):
     wb = openpyxl.Workbook()

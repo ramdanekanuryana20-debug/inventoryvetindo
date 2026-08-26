@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter, Pencil, Upload, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter, Pencil, Upload, FileSpreadsheet, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -37,6 +37,23 @@ export default function Sales() {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [prodOpen, setProdOpen] = useState(false);
+  const [prodQ, setProdQ] = useState("");
+  const [prodStart, setProdStart] = useState("");
+  const [prodEnd, setProdEnd] = useState("");
+  const [prodResult, setProdResult] = useState(null);
+  const [prodLoading, setProdLoading] = useState(false);
+
+  const openProdSearch = () => { setProdResult(null); setProdOpen(true); };
+  const runProdReport = async () => {
+    if (!prodQ.trim()) { toast.error("Ketik nama produk dulu"); return; }
+    setProdLoading(true);
+    try {
+      const res = await api.get("/sales/product-report", { params: { q: prodQ.trim(), start: prodStart || undefined, end: prodEnd || undefined } });
+      setProdResult(res.data);
+    } catch { toast.error("Gagal mencari"); }
+    finally { setProdLoading(false); }
+  };
 
   const loadSales = (start, end) => {
     const params = {};
@@ -195,6 +212,9 @@ export default function Sales() {
           <p className="text-sm text-slate-500 mt-1">{sales.length} transaksi tercatat</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={openProdSearch} data-testid="product-search-button">
+            <Search className="h-4 w-4 mr-2" /> Cari Produk
+          </Button>
           <Button variant="outline" onClick={openImport} data-testid="import-sales-button">
             <Upload className="h-4 w-4 mr-2" /> Import Excel
           </Button>
@@ -379,6 +399,68 @@ export default function Sales() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={prodOpen} onOpenChange={setProdOpen}>
+        <DialogContent className="bg-white max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="product-search-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2"><Search className="h-5 w-5 text-primary" /> Cari Produk di Penjualan</DialogTitle>
+            <DialogDescription>Ketik nama produk & atur rentang tanggal untuk melihat semua transaksi yang mengandung produk itu beserta total qty & nominalnya.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[180px]">
+              <Label className="text-xs text-slate-500">Nama Produk</Label>
+              <Input value={prodQ} onChange={(e) => setProdQ(e.target.value)} placeholder="mis. AZODYL"
+                data-testid="product-search-input" className="mt-1 h-9" onKeyDown={(e) => e.key === "Enter" && runProdReport()} />
+            </div>
+            <div>
+              <Label className="text-xs text-slate-500">Dari</Label>
+              <Input type="date" value={prodStart} onChange={(e) => setProdStart(e.target.value)} data-testid="product-start-date" className="mt-1 h-9 w-40" />
+            </div>
+            <div>
+              <Label className="text-xs text-slate-500">Sampai</Label>
+              <Input type="date" value={prodEnd} onChange={(e) => setProdEnd(e.target.value)} data-testid="product-end-date" className="mt-1 h-9 w-40" />
+            </div>
+            <Button onClick={runProdReport} disabled={prodLoading} data-testid="run-product-search" className="h-9">
+              {prodLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Search className="h-4 w-4 mr-2" /> Cari</>}
+            </Button>
+          </div>
+
+          {prodResult && (
+            <div className="mt-2">
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-slate-50 border border-slate-200 rounded-md p-3"><div className="text-xs text-slate-400">Transaksi</div><div className="font-heading text-lg font-bold tabular-nums" data-testid="product-count">{prodResult.count}</div></div>
+                <div className="bg-slate-50 border border-slate-200 rounded-md p-3"><div className="text-xs text-slate-400">Total Qty Terjual</div><div className="font-heading text-lg font-bold tabular-nums text-blue-700" data-testid="product-total-qty">{num(prodResult.total_qty)}</div></div>
+                <div className="bg-primary/5 border border-primary/20 rounded-md p-3"><div className="text-xs text-slate-400">Total Nominal</div><div className="font-heading text-lg font-bold tabular-nums text-primary" data-testid="product-total-nominal">{rupiah(prodResult.total_nominal)}</div></div>
+              </div>
+              <div className="space-y-2" data-testid="product-report-list">
+                {prodResult.transactions.map((t) => (
+                  <div key={t.sale_id} className="border border-slate-200 rounded-md overflow-hidden" data-testid="product-report-row">
+                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 text-sm">
+                      <span className="font-medium text-slate-700">{formatDate(t.tanggal)}</span>
+                      <span className="tabular-nums font-semibold">{rupiah(t.subtotal)}</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {t.items.map((it, i) => (
+                          <tr key={i} className="border-t border-slate-100">
+                            <td className="px-3 py-1.5 text-slate-800">{it.nama_barang}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums w-20">{num(it.qty)}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums w-28">{rupiah(it.harga)}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums w-32 font-medium">{rupiah(it.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+                {prodResult.count === 0 && (
+                  <div className="text-sm text-slate-400 py-10 text-center">Tidak ada transaksi yang mengandung produk itu pada rentang tanggal tersebut.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="bg-white max-w-lg" data-testid="import-sales-dialog">
