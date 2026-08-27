@@ -23,19 +23,19 @@ body {
         --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
         --popover-foreground: 222 47% 11%;
-        --primary: 142 61% 20%;
+        --primary: 221 83% 45%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 210 40% 96%;
+        --secondary: 214 32% 96%;
         --secondary-foreground: 222 47% 11%;
-        --muted: 210 40% 96%;
+        --muted: 214 32% 96%;
         --muted-foreground: 215 16% 47%;
-        --accent: 142 40% 94%;
-        --accent-foreground: 142 61% 20%;
+        --accent: 214 95% 93%;
+        --accent-foreground: 221 83% 45%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
         --border: 214 32% 91%;
         --input: 214 32% 91%;
-        --ring: 142 61% 20%;
+        --ring: 221 83% 45%;
         --radius: 0.5rem;
     }
 }
@@ -54,6 +54,6 @@ body {
 }
 
 ::selection {
-    background: #166534;
+    background: #1d4ed8;
     color: #fff;
 }

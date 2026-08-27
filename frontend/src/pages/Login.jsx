@@ -37,11 +37,11 @@ export default function Login() {
       <div className="flex items-center justify-center px-6 py-12 bg-white">
         <div className="w-full max-w-sm">
           <div className="flex items-center gap-3 mb-8">
-            <div className="h-11 w-11 rounded-lg bg-primary flex items-center justify-center">
-              <Stethoscope className="h-6 w-6 text-white" />
+            <div className="h-12 w-12 rounded-lg bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
+              <img src="https://customer-assets-lxgj4vgw.emergentagent.net/job_inventory-pro-1095/artifacts/bwldxhir_logo%20vetindorev.jpg" alt="Vetindo" className="h-full w-full object-contain" />
             </div>
             <div>
-              <div className="font-heading font-extrabold text-xl tracking-tight text-slate-900">VetStock</div>
+              <div className="font-heading font-extrabold text-xl tracking-tight text-slate-900">Vetindo</div>
               <div className="text-xs text-slate-500">Sistem Stock & Penjualan</div>
             </div>
           </div>

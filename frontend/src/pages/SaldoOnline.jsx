@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Save, Store, Wallet, History, Download } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const monthLabel = (m) => {
@@ -19,6 +20,7 @@ const monthLabel = (m) => {
 };
 
 export default function SaldoOnline() {
+  const { isAdmin } = useAuth();
   const [bulan, setBulan] = useState(currentMonth());
   const [data, setData] = useState(null);
   const [rows, setRows] = useState([]);
@@ -147,7 +149,7 @@ export default function SaldoOnline() {
         <Store className="h-4 w-4 text-slate-400" />
         <Input placeholder="Nama toko baru (mis. Shopee)" value={newStore} onChange={(e) => setNewStore(e.target.value)}
           data-testid="new-store-input" className="h-9" onKeyDown={(e) => e.key === "Enter" && addStore()} />
-        <Button size="sm" onClick={addStore} data-testid="add-store-button"><Plus className="h-4 w-4 mr-1" /> Toko</Button>
+        {isAdmin && <Button size="sm" onClick={addStore} data-testid="add-store-button"><Plus className="h-4 w-4 mr-1" /> Toko</Button>}
       </div>
 
       {/* Main saldo table */}
@@ -179,9 +181,9 @@ export default function SaldoOnline() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium">{rupiah(totalToko)}</td>
                     <td className="px-3 py-2">
-                      <button onClick={() => deleteStore(r.store_id)} className="p-1 text-slate-400 hover:text-red-600" data-testid={`delete-store-${r.store_id}`}>
+                      {isAdmin && <button onClick={() => deleteStore(r.store_id)} className="p-1 text-slate-400 hover:text-red-600" data-testid={`delete-store-${r.store_id}`}>
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 );
@@ -203,7 +205,7 @@ export default function SaldoOnline() {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 mb-8">
-        <Button onClick={saveSaldo} data-testid="save-saldo-button"><Save className="h-4 w-4 mr-2" /> Simpan Saldo Bulan Ini</Button>
+        {isAdmin && <Button onClick={saveSaldo} data-testid="save-saldo-button"><Save className="h-4 w-4 mr-2" /> Simpan Saldo Bulan Ini</Button>}
         <div className="flex items-center gap-2 text-sm bg-white border border-slate-200 rounded-md px-3 py-2">
           <span className="text-slate-500">Invoice (tagihan belum dibayar):</span>
           <span className="font-semibold text-red-600 tabular-nums" data-testid="saldo-invoice">{rupiah(invoice)}</span>
@@ -240,9 +242,9 @@ export default function SaldoOnline() {
                     <td className="px-3 py-2 text-slate-600">{w.sumber || "-"}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium">{rupiah(running)}</td>
                     <td className="px-3 py-2">
-                      <button onClick={() => deleteWithdrawal(w.id)} className="p-1 text-slate-400 hover:text-red-600" data-testid={`delete-withdrawal-${w.id}`}>
+                      {isAdmin && <button onClick={() => deleteWithdrawal(w.id)} className="p-1 text-slate-400 hover:text-red-600" data-testid={`delete-withdrawal-${w.id}`}>
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 );
@@ -259,9 +261,9 @@ export default function SaldoOnline() {
                 </td>
                 <td className="px-3 py-2"></td>
                 <td className="px-3 py-2">
-                  <button onClick={addWithdrawal} className="p-1 text-primary hover:text-green-700" data-testid="add-withdrawal-button">
+                  {isAdmin && <button onClick={addWithdrawal} className="p-1 text-primary hover:text-blue-700" data-testid="add-withdrawal-button">
                     <Plus className="h-5 w-5" />
-                  </button>
+                  </button>}
                 </td>
               </tr>
             </tbody>

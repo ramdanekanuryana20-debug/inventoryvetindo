@@ -120,7 +120,7 @@ export default function Dashboard() {
                 contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }}
                 cursor={{ fill: "rgba(22,101,52,0.06)" }}
               />
-              <Bar dataKey="total" fill="#166534" radius={[4, 4, 0, 0]} maxBarSize={44} />
+              <Bar dataKey="total" fill="#1d4ed8" radius={[4, 4, 0, 0]} maxBarSize={44} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -191,7 +191,7 @@ export default function Dashboard() {
                 cursor={{ fill: "rgba(22,101,52,0.06)" }}
               />
               <Legend formatter={(val) => (val === "penjualan" ? "Penjualan" : "Bayar Supplier")} wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="penjualan" fill="#166534" radius={[4, 4, 0, 0]} maxBarSize={22} />
+              <Bar dataKey="penjualan" fill="#1d4ed8" radius={[4, 4, 0, 0]} maxBarSize={22} />
               <Bar dataKey="pembayaran" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={22} />
             </BarChart>
           </ResponsiveContainer>

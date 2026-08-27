@@ -51,11 +51,11 @@ export default function Layout({ children }) {
     <div className="min-h-screen flex bg-[#F8FAFC]">
       <aside className="w-64 shrink-0 bg-primary text-primary-foreground flex flex-col fixed h-full z-20">
         <div className="px-5 py-6 border-b border-white/10 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-md bg-white/15 flex items-center justify-center">
-            <Stethoscope className="h-5 w-5" />
+          <div className="h-11 w-11 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
+            <img src="https://customer-assets-lxgj4vgw.emergentagent.net/job_inventory-pro-1095/artifacts/bwldxhir_logo%20vetindorev.jpg" alt="Vetindo" className="h-full w-full object-contain" />
           </div>
           <div>
-            <div className="font-heading font-extrabold tracking-tight text-lg leading-none">VetStock</div>
+            <div className="font-heading font-extrabold tracking-tight text-lg leading-none">Vetindo</div>
             <div className="text-[11px] text-white/60 mt-0.5">Inventory & Sales</div>
           </div>
         </div>

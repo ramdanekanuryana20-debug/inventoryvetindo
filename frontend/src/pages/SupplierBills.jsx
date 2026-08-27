@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Receipt, CheckCircle2, Clock, ChevronDown, ChevronRight, Undo2, Wallet, Trash2, History } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const monthLabel = (m) => {
@@ -24,6 +25,7 @@ const STATUS = {
 };
 
 function BillCard({ bill, onToggle, onOpenPay, onDeletePayment, expanded, onExpand }) {
+  const { isAdmin } = useAuth();
   const paid = bill.status === "paid";
   const badge = STATUS[bill.status] || STATUS.unpaid;
   return (
@@ -45,6 +47,7 @@ function BillCard({ bill, onToggle, onOpenPay, onDeletePayment, expanded, onExpa
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {isAdmin && (<>
             {!paid && (
               <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onOpenPay(bill); }} data-testid={`pay-partial-${bill.id}`}>
                 <Wallet className="h-4 w-4 mr-1" /> Bayar
@@ -59,6 +62,7 @@ function BillCard({ bill, onToggle, onOpenPay, onDeletePayment, expanded, onExpa
                 <Undo2 className="h-4 w-4 mr-1" /> Batalkan
               </Button>
             )}
+            </>)}
           </div>
         </div>
       </div>
