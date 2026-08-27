@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api, formatApiErrorDetail } from "@/lib/api";
-import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet, KeyRound, History, Users } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet, KeyRound, History, Users, Menu, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,9 @@ export default function Layout({ children }) {
   const [pwOpen, setPwOpen] = useState(false);
   const [form, setForm] = useState({ current_password: "", new_password: "", confirm: "" });
   const [saving, setSaving] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const LOGO = "https://customer-assets-lxgj4vgw.emergentagent.net/job_inventory-pro-1095/artifacts/bwldxhir_logo%20vetindorev.jpg";
 
   const handleLogout = async () => {
     await logout();
@@ -49,15 +52,24 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen flex bg-[#F8FAFC]">
-      <aside className="w-64 shrink-0 bg-primary text-primary-foreground flex flex-col fixed h-full z-20">
-        <div className="px-5 py-6 border-b border-white/10 flex items-center gap-3">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 z-30 flex items-center gap-3 px-4">
+        <button onClick={() => setMobileOpen(true)} data-testid="mobile-menu-button" className="p-2 -ml-2 text-slate-700"><Menu className="h-5 w-5" /></button>
+        <img src={LOGO} alt="Vetindo" className="h-7 w-7 rounded object-contain" />
+        <span className="font-heading font-extrabold text-slate-900">Vetindo</span>
+      </div>
+      {mobileOpen && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileOpen(false)} data-testid="sidebar-overlay" />}
+      <aside className={`fixed h-full z-50 bg-primary text-primary-foreground flex flex-col transition-all duration-200 w-64 ${collapsed ? "lg:w-20" : "lg:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
+        <div className="px-4 py-6 border-b border-white/10 flex items-center gap-3">
           <div className="h-11 w-11 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
-            <img src="https://customer-assets-lxgj4vgw.emergentagent.net/job_inventory-pro-1095/artifacts/bwldxhir_logo%20vetindorev.jpg" alt="Vetindo" className="h-full w-full object-contain" />
+            <img src={LOGO} alt="Vetindo" className="h-full w-full object-contain" />
           </div>
-          <div>
+          <div className={collapsed ? "lg:hidden" : ""}>
             <div className="font-heading font-extrabold tracking-tight text-lg leading-none">Vetindo</div>
             <div className="text-[11px] text-white/60 mt-0.5">Inventory & Sales</div>
           </div>
+          <button onClick={() => setCollapsed(!collapsed)} data-testid="sidebar-toggle" className="ml-auto hidden lg:flex p-1.5 rounded hover:bg-white/10 text-white/80">
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {links.filter((l) => !l.adminOnly || isAdmin).map((l) => (
@@ -66,41 +78,33 @@ export default function Layout({ children }) {
               to={l.to}
               end={l.to === "/"}
               data-testid={l.testid}
+              onClick={() => setMobileOpen(false)}
+              title={l.label}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${collapsed ? "lg:justify-center" : ""} ${
                   isActive ? "bg-white text-primary" : "text-white/75 hover:bg-white/10 hover:text-white"
                 }`
               }
             >
-              <l.icon className="h-4 w-4" />
-              {l.label}
+              <l.icon className="h-4 w-4 shrink-0" />
+              <span className={collapsed ? "lg:hidden" : ""}>{l.label}</span>
             </NavLink>
           ))}
         </nav>
         <div className="p-3 border-t border-white/10">
-          <div className="px-3 py-2 mb-1">
+          <div className={`px-3 py-2 mb-1 ${collapsed ? "lg:hidden" : ""}`}>
             <div className="text-xs text-white/50">Masuk sebagai</div>
             <div className="text-sm font-medium truncate" data-testid="current-user-email">{user?.email}</div>
           </div>
-          <Button
-            variant="ghost"
-            onClick={() => setPwOpen(true)}
-            data-testid="open-change-password"
-            className="w-full justify-start text-white/80 hover:bg-white/10 hover:text-white"
-          >
-            <KeyRound className="h-4 w-4 mr-2" /> Ganti Password
+          <Button variant="ghost" onClick={() => setPwOpen(true)} data-testid="open-change-password" className={`w-full text-white/80 hover:bg-white/10 hover:text-white ${collapsed ? "lg:justify-center lg:px-0" : "justify-start"}`}>
+            <KeyRound className="h-4 w-4 lg:mr-0 mr-2" /> <span className={collapsed ? "lg:hidden" : ""}>Ganti Password</span>
           </Button>
-          <Button
-            variant="ghost"
-            onClick={handleLogout}
-            data-testid="logout-button"
-            className="w-full justify-start text-white/80 hover:bg-white/10 hover:text-white"
-          >
-            <LogOut className="h-4 w-4 mr-2" /> Keluar
+          <Button variant="ghost" onClick={handleLogout} data-testid="logout-button" className={`w-full text-white/80 hover:bg-white/10 hover:text-white ${collapsed ? "lg:justify-center lg:px-0" : "justify-start"}`}>
+            <LogOut className="h-4 w-4 lg:mr-0 mr-2" /> <span className={collapsed ? "lg:hidden" : ""}>Keluar</span>
           </Button>
         </div>
       </aside>
-      <main className="flex-1 ml-64 min-h-screen">{children}</main>
+      <main className={`flex-1 min-h-screen transition-all pt-14 lg:pt-0 ${collapsed ? "lg:ml-20" : "lg:ml-64"}`}>{children}</main>
 
       <Dialog open={pwOpen} onOpenChange={setPwOpen}>
         <DialogContent className="bg-white max-w-sm" data-testid="change-password-dialog">
