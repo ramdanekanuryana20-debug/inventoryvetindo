@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api, formatApiErrorDetail } from "@/lib/api";
-import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet, KeyRound } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, LogOut, Stethoscope, Receipt, Wallet, KeyRound, History, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +15,12 @@ const links = [
   { to: "/sales", label: "Penjualan", icon: ShoppingCart, testid: "nav-sales" },
   { to: "/supplier-bills", label: "Tagihan Supplier", icon: Receipt, testid: "nav-supplier-bills" },
   { to: "/saldo-online", label: "Saldo Online", icon: Wallet, testid: "nav-saldo-online" },
+  { to: "/riwayat", label: "Riwayat Perubahan", icon: History, testid: "nav-riwayat" },
+  { to: "/users", label: "Manajemen User", icon: Users, testid: "nav-users", adminOnly: true },
 ];
 
 export default function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [pwOpen, setPwOpen] = useState(false);
   const [form, setForm] = useState({ current_password: "", new_password: "", confirm: "" });
@@ -58,7 +60,7 @@ export default function Layout({ children }) {
           </div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {links.map((l) => (
+          {links.filter((l) => !l.adminOnly || isAdmin).map((l) => (
             <NavLink
               key={l.to}
               to={l.to}

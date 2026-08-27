@@ -17,11 +17,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Trash2, Download, ShoppingCart, X, ChevronDown, ChevronRight, Printer, Filter, Pencil, Upload, FileSpreadsheet, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyItem = () => ({ product_id: "", nama_barang: "", qty: 1, harga: 0 });
 
 export default function Sales() {
+  const { isAdmin } = useAuth();
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [open, setOpen] = useState(false);
@@ -215,15 +217,19 @@ export default function Sales() {
           <Button variant="outline" onClick={openProdSearch} data-testid="product-search-button">
             <Search className="h-4 w-4 mr-2" /> Cari Produk
           </Button>
+          {isAdmin && (
           <Button variant="outline" onClick={openImport} data-testid="import-sales-button">
             <Upload className="h-4 w-4 mr-2" /> Import Excel
           </Button>
+          )}
           <Button variant="outline" onClick={exportExcel} data-testid="export-sales-button">
             <Download className="h-4 w-4 mr-2" /> Export Excel
           </Button>
+          {isAdmin && (
           <Button onClick={openNew} data-testid="add-sale-button">
             <Plus className="h-4 w-4 mr-2" /> Transaksi Baru
           </Button>
+          )}
         </div>
       </div>
 
@@ -264,18 +270,22 @@ export default function Sales() {
                     <div className="text-xs text-slate-400">Grand Total</div>
                     <div className="font-heading font-bold text-primary tabular-nums" data-testid="sale-grand-total">{rupiah(s.grand_total)}</div>
                   </div>
+                  {isAdmin && (
                   <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} data-testid={`edit-sale-${s.id}`}
                     className="p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors" title="Edit transaksi">
                     <Pencil className="h-4 w-4" />
                   </button>
+                  )}
                   <button onClick={(e) => { e.stopPropagation(); printReceipt(s.id); }} data-testid={`print-sale-${s.id}`}
                     className="p-1.5 rounded hover:bg-green-100 text-primary transition-colors" title="Cetak struk">
                     <Printer className="h-4 w-4" />
                   </button>
+                  {isAdmin && (
                   <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} data-testid={`delete-sale-${s.id}`}
                     className="p-1.5 rounded hover:bg-red-100 text-red-600 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
+                  )}
                 </div>
               </div>
               {isOpen && (

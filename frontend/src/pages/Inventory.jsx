@@ -17,10 +17,12 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, Download, Search, Package, Upload, FileSpreadsheet, Loader2, PackagePlus, Coins, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 const empty = { nama_produk: "", qty: 1, harga_modal: 0, stock: 0, keterangan: "" };
 
 export default function Inventory() {
+  const { isAdmin } = useAuth();
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -183,15 +185,19 @@ export default function Inventory() {
           <p className="text-sm text-slate-500 mt-1">{products.length} produk terdaftar</p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
           <Button variant="outline" onClick={openImport} data-testid="import-inventory-button">
             <Upload className="h-4 w-4 mr-2" /> Import Excel
           </Button>
+          )}
           <Button variant="outline" onClick={exportExcel} data-testid="export-inventory-button">
             <Download className="h-4 w-4 mr-2" /> Export Excel
           </Button>
+          {isAdmin && (
           <Button onClick={openAdd} data-testid="add-product-button">
             <Plus className="h-4 w-4 mr-2" /> Tambah Produk
           </Button>
+          )}
         </div>
       </div>
 
@@ -257,6 +263,7 @@ export default function Inventory() {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex justify-end gap-1">
+                      {isAdmin && (<>
                       <button onClick={() => openStockDlg(p)} data-testid={`update-stock-${p.id}`}
                         className="p-1.5 rounded hover:bg-blue-100 text-blue-600 transition-colors" title="Update Stock">
                         <PackagePlus className="h-4 w-4" />
@@ -273,6 +280,7 @@ export default function Inventory() {
                         className="p-1.5 rounded hover:bg-red-100 text-red-600 transition-colors">
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      </>)}
                     </div>
                   </td>
                 </tr>

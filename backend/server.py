@@ -536,7 +536,7 @@ async def login(data: LoginInput, response: Response):
     token = create_access_token(uid, email)
     response.set_cookie(key="access_token", value=token, httponly=True,
                         secure=True, samesite="none", max_age=604800, path="/")
-    return {"token": token, "user": {"id": uid, "email": email, "name": user.get("name", "Admin")}}
+    return {"token": token, "user": {"id": uid, "email": email, "name": user.get("name", "Admin"), "role": user.get("role", "admin")}}
 
 
 @api_router.post("/auth/logout")
@@ -548,6 +548,76 @@ async def logout(response: Response, user: dict = Depends(get_current_user)):
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
+
+
+async def log_change(product: dict, jenis: str, sebelum, sesudah, user: dict):
+    if sebelum == sesudah:
+        return
+    await db.change_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "product_id": product.get("id"),
+        "nama_produk": product.get("nama_produk"),
+        "jenis": jenis,
+        "sebelum": sebelum,
+        "sesudah": sesudah,
+        "user": user.get("name") or user.get("email"),
+        "tanggal": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+@api_router.get("/change-logs")
+async def list_change_logs(product_id: Optional[str] = None, start: Optional[str] = None,
+                           end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if product_id:
+        q["product_id"] = product_id
+    if start or end:
+        c = {}
+        if start:
+            c["$gte"] = start
+        if end:
+            c["$lte"] = end + "\uffff"
+        q["tanggal"] = c
+    docs = await db.change_logs.find(q).sort("tanggal", -1).to_list(5000)
+    for d in docs:
+        d.pop("_id", None)
+    return docs
+
+
+class UserCreateInput(BaseModel):
+    email: EmailStr
+    password: str
+    name: Optional[str] = ""
+
+
+@api_router.get("/users")
+async def list_users(user: dict = Depends(get_current_user)):
+    docs = await db.users.find({}, {"password_hash": 0}).to_list(1000)
+    return [{"id": str(d["_id"]), "email": d["email"], "name": d.get("name", ""), "role": d.get("role", "viewer")} for d in docs]
+
+
+@api_router.post("/users")
+async def create_user(data: UserCreateInput, user: dict = Depends(get_current_user)):
+    email = data.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+    await db.users.insert_one({
+        "email": email, "password_hash": hash_password(data.password),
+        "name": data.name or "Viewer", "role": "viewer",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"message": "Akun viewer ditambahkan"}
+
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, user: dict = Depends(get_current_user)):
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Akun admin tidak bisa dihapus")
+    await db.users.delete_one({"_id": ObjectId(user_id)})
+    return {"message": "User dihapus"}
 
 
 @api_router.post("/auth/change-password")
@@ -611,6 +681,7 @@ async def add_stock(product_id: str, data: StockAddInput, user: dict = Depends(g
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     new_stock = (doc.get("stock") or 0) + data.jumlah
     await db.products.update_one({"id": product_id}, {"$set": {"stock": new_stock}})
+    await log_change(doc, "stok", doc.get("stock") or 0, new_stock, user)
     doc = await db.products.find_one({"id": product_id})
     return enrich_product(doc)
 
@@ -629,6 +700,7 @@ async def adjust_modal(product_id: str, data: ModalAdjustInput, user: dict = Dep
     if new_modal < 0:
         new_modal = 0
     await db.products.update_one({"id": product_id}, {"$set": {"harga_modal": new_modal}})
+    await log_change(doc, "harga_modal", cur, new_modal, user)
     doc = await db.products.find_one({"id": product_id})
     return enrich_product(doc)
 
@@ -1300,6 +1372,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+READONLY_EXEMPT = ("/api/auth/login", "/api/auth/logout", "/api/auth/change-password", "/api/cron/")
+
+
+@app.middleware("http")
+async def viewer_readonly(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api/"):
+        path = request.url.path
+        if not any(path.startswith(p) for p in READONLY_EXEMPT):
+            token = request.cookies.get("access_token")
+            if not token:
+                ah = request.headers.get("Authorization", "")
+                token = ah[7:] if ah.startswith("Bearer ") else ""
+            role = None
+            if token:
+                try:
+                    payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+                    u = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+                    role = u.get("role") if u else None
+                except Exception:
+                    role = None
+            if role != "admin":
+                from starlette.responses import JSONResponse
+                return JSONResponse(status_code=403, content={"detail": "Hanya admin yang dapat mengubah data"})
+    return await call_next(request)
 
 
 @app.on_event("startup")

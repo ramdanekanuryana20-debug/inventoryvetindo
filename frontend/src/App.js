@@ -9,6 +9,8 @@ import Inventory from "@/pages/Inventory";
 import Sales from "@/pages/Sales";
 import SupplierBills from "@/pages/SupplierBills";
 import SaldoOnline from "@/pages/SaldoOnline";
+import ChangeHistory from "@/pages/ChangeHistory";
+import UserManagement from "@/pages/UserManagement";
 import { Toaster } from "@/components/ui/sonner";
 
 function App() {
@@ -55,6 +57,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Layout><SaldoOnline /></Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/riwayat"
+              element={
+                <ProtectedRoute>
+                  <Layout><ChangeHistory /></Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <ProtectedRoute>
+                  <Layout><UserManagement /></Layout>
                 </ProtectedRoute>
               }
             />
